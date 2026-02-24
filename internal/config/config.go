@@ -61,6 +61,14 @@ type LoggingConfig struct {
 	SensitiveHeaders []string `yaml:"sensitive_headers"`
 	StoreBase64      bool     `yaml:"store_base64"`
 
+	// EarlyRequestBodySnapshot controls whether PrismCat saves an additional log
+	// snapshot right after the request body has been fully sent to the upstream
+	// (i.e. before the upstream responds).
+	//
+	// This makes request bodies visible earlier for non-streaming/slow upstreams,
+	// but adds an extra DB write per request.
+	EarlyRequestBodySnapshot bool `yaml:"early_request_body_snapshot"`
+
 	// DetachBodyOverBytes detaches large captured bodies into the blob store.
 	// The log table keeps only a short preview + a content-addressed reference.
 	//
@@ -110,12 +118,13 @@ func Load(path string) (*Config, error) {
 			CORSAllowHeaders:       []string{"Content-Type", "Authorization"},
 		},
 		Logging: LoggingConfig{
-			MaxRequestBody:      1 << 20, // 1MB
-			MaxResponseBody:     10 << 20, // 10MB
-			SensitiveHeaders:    []string{"Authorization", "x-api-key", "api-key"},
-			StoreBase64:         true,
-			DetachBodyOverBytes: 256 * 1024,
-			BodyPreviewBytes:    4 * 1024,
+			MaxRequestBody:           1 << 20,  // 1MB
+			MaxResponseBody:          10 << 20, // 10MB
+			SensitiveHeaders:         []string{"Authorization", "x-api-key", "api-key"},
+			StoreBase64:              true,
+			EarlyRequestBodySnapshot: true,
+			DetachBodyOverBytes:      256 * 1024,
+			BodyPreviewBytes:         4 * 1024,
 		},
 		Storage: StorageConfig{
 			Database:    "./data/prismcat.db",

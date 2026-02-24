@@ -167,6 +167,7 @@ upstreams:
 
 - 如果 `openai.localhost` 在你的系统上无法解析，请手动写 hosts 或使用自己的泛域名（见上面的 Nginx 部署建议）。
 - 如果反向代理后 Streaming 变慢/像卡住，务必检查 Nginx 里是否设置了 `proxy_buffering off` 和 `proxy_http_version 1.1`。
+- 如果你希望“上游还未响应时也能看到 Request Body”，请保持 `logging.early_request_body_snapshot` 开启（默认开启）。关闭后可能提升吞吐/降低写入压力，但 Request Body 只会在请求结束后才出现。
 
 ---
 

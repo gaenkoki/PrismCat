@@ -69,6 +69,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	serverCfg := p.cfg.ServerSnapshot()
 	loggingCfg := p.cfg.LoggingSnapshot()
+	var logMu sync.Mutex
 
 	// Extract upstream name from host (e.g. openai.localhost -> openai).
 	subdomain := config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains)
@@ -104,7 +105,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		RequestHeaders: p.sanitizeHeaders(r.Header, loggingCfg.SensitiveHeaders),
 	}
+	logMu.Lock()
 	p.saveLogSnapshot(logEntry)
+	logMu.Unlock()
 
 	// Per-request timeout: do NOT mutate a shared http.Client timeout.
 	timeoutSeconds := upstream.Timeout
@@ -119,13 +122,36 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body io.Reader
 	if r.Body != nil && r.Body != http.NoBody {
 		tee := io.TeeReader(r.Body, reqCapture)
-		body = &teeReadCloser{r: tee, c: r.Body}
+		rc := &teeReadCloser{r: tee, c: r.Body}
+		if loggingCfg.EarlyRequestBodySnapshot {
+			bodyDone := make(chan struct{})
+			body = &eofNotifyReadCloser{rc: rc, done: bodyDone}
+
+			// Save an extra snapshot once the request body has been fully sent upstream.
+			// This runs while client.Do is blocked waiting for response headers.
+			go func() {
+				select {
+				case <-bodyDone:
+				case <-ctx.Done():
+					// Avoid leaking goroutines if the transport never fully reads the body.
+				}
+
+				logMu.Lock()
+				p.applyRequestCapture(logEntry, reqCapture, loggingCfg)
+				p.saveLogSnapshot(logEntry)
+				logMu.Unlock()
+			}()
+		} else {
+			body = rc
+		}
 	}
 
 	upstreamReq, err := http.NewRequestWithContext(ctx, r.Method, upstreamURL.String(), body)
 	if err != nil {
+		logMu.Lock()
 		logEntry.Error = fmt.Sprintf("create upstream request: %v", err)
 		p.finalizeAndSaveLog(logEntry, startTime, reqCapture, nil, loggingCfg)
+		logMu.Unlock()
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return
 	}
@@ -138,16 +164,20 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := p.client.Do(upstreamReq)
 	if err != nil {
+		logMu.Lock()
 		logEntry.Error = fmt.Sprintf("upstream request failed: %v", err)
 		p.finalizeAndSaveLog(logEntry, startTime, reqCapture, nil, loggingCfg)
+		logMu.Unlock()
 		http.Error(w, fmt.Sprintf("upstream error: %v", err), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 
+	logMu.Lock()
 	logEntry.StatusCode = resp.StatusCode
 	logEntry.ResponseHeaders = p.headerToMap(resp.Header)
 	logEntry.Streaming = isStreaming(resp.Header)
+	logMu.Unlock()
 
 	// Forward response headers and status code.
 	p.copyHeaders(w.Header(), resp.Header)
@@ -156,38 +186,45 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Forward response body while capturing a bounded preview for logging.
 	respCapture := newLimitedCapture(loggingCfg.MaxResponseBody)
 	copied, copyErr := copyWithOptionalFlush(w, resp.Body, respCapture, logEntry.Streaming)
+	logMu.Lock()
 	logEntry.ResponseBodySize = copied
 	if copyErr != nil {
 		// The response may already be partially written; we can only record the error.
 		logEntry.Error = fmt.Sprintf("forward response failed: %v", copyErr)
 	}
-
 	p.finalizeAndSaveLog(logEntry, startTime, reqCapture, respCapture, loggingCfg)
+	logMu.Unlock()
 }
 
 func (p *Proxy) finalizeAndSaveLog(log *storage.RequestLog, startTime time.Time, reqCap, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
-	if reqCap != nil {
-		log.RequestBodySize = reqCap.Total()
-		contentType := firstHeaderValue(log.RequestHeaders, "Content-Type")
-		contentEncoding := firstHeaderValue(log.RequestHeaders, "Content-Encoding")
-		body, truncated := bodyForLog(contentType, contentEncoding, reqCap.Bytes(), loggingCfg.MaxRequestBody, loggingCfg.StoreBase64)
-		log.RequestBody = body
-		log.Truncated = log.Truncated || truncated
-	}
-	if respCap != nil {
-		contentType := firstHeaderValue(log.ResponseHeaders, "Content-Type")
-		contentEncoding := firstHeaderValue(log.ResponseHeaders, "Content-Encoding")
-		body, truncated := bodyForLog(contentType, contentEncoding, respCap.Bytes(), loggingCfg.MaxResponseBody, loggingCfg.StoreBase64)
-		log.ResponseBody = body
-		log.Truncated = log.Truncated || truncated
-	}
-
-	log.Truncated = log.Truncated ||
-		(reqCap != nil && reqCap.Truncated()) ||
-		(respCap != nil && respCap.Truncated())
+	p.applyRequestCapture(log, reqCap, loggingCfg)
+	p.applyResponseCapture(log, respCap, loggingCfg)
 	log.Latency = time.Since(startTime).Milliseconds()
 
 	p.saveLogSnapshot(log)
+}
+
+func (p *Proxy) applyRequestCapture(log *storage.RequestLog, reqCap *limitedCapture, loggingCfg config.LoggingConfig) {
+	if log == nil || reqCap == nil {
+		return
+	}
+	log.RequestBodySize = reqCap.Total()
+	contentType := firstHeaderValue(log.RequestHeaders, "Content-Type")
+	contentEncoding := firstHeaderValue(log.RequestHeaders, "Content-Encoding")
+	body, truncated := bodyForLog(contentType, contentEncoding, reqCap.Bytes(), loggingCfg.MaxRequestBody, loggingCfg.StoreBase64)
+	log.RequestBody = body
+	log.Truncated = log.Truncated || truncated || reqCap.Truncated()
+}
+
+func (p *Proxy) applyResponseCapture(log *storage.RequestLog, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
+	if log == nil || respCap == nil {
+		return
+	}
+	contentType := firstHeaderValue(log.ResponseHeaders, "Content-Type")
+	contentEncoding := firstHeaderValue(log.ResponseHeaders, "Content-Encoding")
+	body, truncated := bodyForLog(contentType, contentEncoding, respCap.Bytes(), loggingCfg.MaxResponseBody, loggingCfg.StoreBase64)
+	log.ResponseBody = body
+	log.Truncated = log.Truncated || truncated || respCap.Truncated()
 }
 
 func firstHeaderValue(headers map[string][]string, key string) string {
@@ -391,6 +428,32 @@ type teeReadCloser struct {
 
 func (t *teeReadCloser) Read(p []byte) (int, error) { return t.r.Read(p) }
 func (t *teeReadCloser) Close() error               { return t.c.Close() }
+
+// eofNotifyReadCloser signals on EOF/Close. Used to snapshot request bodies as
+// soon as they're fully sent to the upstream.
+type eofNotifyReadCloser struct {
+	rc   io.ReadCloser
+	done chan struct{}
+	once sync.Once
+}
+
+func (n *eofNotifyReadCloser) Read(p []byte) (int, error) {
+	nn, err := n.rc.Read(p)
+	if err == io.EOF {
+		n.once.Do(func() {
+			close(n.done)
+		})
+	}
+	return nn, err
+}
+
+func (n *eofNotifyReadCloser) Close() error {
+	err := n.rc.Close()
+	n.once.Do(func() {
+		close(n.done)
+	})
+	return err
+}
 
 type limitedCapture struct {
 	max int64

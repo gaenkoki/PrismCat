@@ -128,6 +128,7 @@ export interface AppConfig {
         max_request_body: number
         max_response_body: number
         sensitive_headers: string[]
+        early_request_body_snapshot: boolean
         detach_body_over_bytes: number
         body_preview_bytes: number
         store_base64: boolean
@@ -143,6 +144,7 @@ export interface ConfigUpdate {
         max_request_body?: number
         max_response_body?: number
         sensitive_headers?: string[]
+        early_request_body_snapshot?: boolean
         detach_body_over_bytes?: number
         body_preview_bytes?: number
         store_base64?: boolean

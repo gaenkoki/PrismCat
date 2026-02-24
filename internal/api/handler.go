@@ -261,12 +261,13 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 				"proxy_domains": serverCfg.ProxyDomains,
 			},
 			"logging": map[string]interface{}{
-				"max_request_body":       logging.MaxRequestBody,
-				"max_response_body":      logging.MaxResponseBody,
-				"sensitive_headers":      logging.SensitiveHeaders,
-				"detach_body_over_bytes": logging.DetachBodyOverBytes,
-				"body_preview_bytes":     logging.BodyPreviewBytes,
-				"store_base64":           logging.StoreBase64,
+				"max_request_body":            logging.MaxRequestBody,
+				"max_response_body":           logging.MaxResponseBody,
+				"sensitive_headers":           logging.SensitiveHeaders,
+				"early_request_body_snapshot": logging.EarlyRequestBodySnapshot,
+				"detach_body_over_bytes":      logging.DetachBodyOverBytes,
+				"body_preview_bytes":          logging.BodyPreviewBytes,
+				"store_base64":                logging.StoreBase64,
 			},
 			"storage": map[string]interface{}{
 				"database":       storageCfg.Database,
@@ -285,6 +286,7 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 				MaxRequestBody   *int64    `json:"max_request_body"`
 				MaxResponseBody  *int64    `json:"max_response_body"`
 				SensitiveHeaders *[]string `json:"sensitive_headers"`
+				EarlyReqSnapshot *bool     `json:"early_request_body_snapshot"`
 				DetachBodyOver   *int64    `json:"detach_body_over_bytes"`
 				BodyPreviewBytes *int64    `json:"body_preview_bytes"`
 				StoreBase64      *bool     `json:"store_base64"`
@@ -310,6 +312,9 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 				}
 				if req.Logging.SensitiveHeaders != nil {
 					c.Logging.SensitiveHeaders = *req.Logging.SensitiveHeaders
+				}
+				if req.Logging.EarlyReqSnapshot != nil {
+					c.Logging.EarlyRequestBodySnapshot = *req.Logging.EarlyReqSnapshot
 				}
 				if req.Logging.DetachBodyOver != nil {
 					c.Logging.DetachBodyOverBytes = *req.Logging.DetachBodyOver

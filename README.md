@@ -140,6 +140,7 @@ server {
 
 - If `openai.localhost` doesn't resolve on your system, add it to your hosts file or use your own wildcard domain (see the Nginx section).
 - If streaming feels "stuck" behind a reverse proxy, ensure `proxy_buffering off` and `proxy_http_version 1.1` are set.
+- If you want to see request bodies before the upstream responds, keep `logging.early_request_body_snapshot` enabled (default). Disabling it may improve throughput, but request bodies will only appear after a request completes.
 
 ---
 

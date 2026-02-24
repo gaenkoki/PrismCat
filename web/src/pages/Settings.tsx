@@ -50,6 +50,7 @@ export function Settings() {
     const [detachBodyOver, setDetachBodyOver] = useState(256)
     const [bodyPreview, setBodyPreview] = useState(4096)
     const [storeBase64, setStoreBase64] = useState(true)
+    const [earlyRequestBodySnapshot, setEarlyRequestBodySnapshot] = useState(true)
 
     // 表单状态 - 存储配置
     const [retentionDays, setRetentionDays] = useState(30)
@@ -86,6 +87,7 @@ export function Settings() {
             setDetachBodyOver(Math.round(configData.logging.detach_body_over_bytes / 1024))
             setBodyPreview(Math.round(configData.logging.body_preview_bytes / 1024))
             setStoreBase64(configData.logging.store_base64)
+            setEarlyRequestBodySnapshot(configData.logging.early_request_body_snapshot)
             setRetentionDays(configData.storage.retention_days)
         } catch (err) {
             console.error('Failed to load settings:', err)
@@ -138,6 +140,7 @@ export function Settings() {
                     detach_body_over_bytes: detachBodyOver * 1024,
                     body_preview_bytes: bodyPreview * 1024,
                     store_base64: storeBase64,
+                    early_request_body_snapshot: earlyRequestBodySnapshot,
                 },
             })
             toast.success(t('settings.config_saved'))
@@ -404,6 +407,57 @@ export function Settings() {
                             </div>
 
                             <Separator className="bg-border/20" />
+
+                            <div
+                                className={cn(
+                                    "flex items-center justify-between p-5 rounded-2xl border transition-all cursor-pointer group shadow-sm",
+                                    earlyRequestBodySnapshot
+                                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
+                                        : "bg-muted/30 border-border/40 hover:bg-muted/50"
+                                )}
+                                onClick={() => setEarlyRequestBodySnapshot(!earlyRequestBodySnapshot)}
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className={cn(
+                                        "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors",
+                                        earlyRequestBodySnapshot
+                                            ? "bg-primary/10 border-primary/20 text-primary"
+                                            : "bg-muted border-border/40 text-muted-foreground"
+                                    )}>
+                                        <Clock className="h-5 w-5" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-sm font-black uppercase tracking-wide cursor-pointer text-foreground/90 group-hover:text-primary transition-colors">
+                                                {t('settings.early_request_body_snapshot')}
+                                            </Label>
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic max-w-md">
+                                            {t('settings.early_request_body_snapshot_hint')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div
+                                    className={cn(
+                                        "relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 border",
+                                        earlyRequestBodySnapshot ? "bg-primary border-primary/20" : "bg-muted border-border/40"
+                                    )}
+                                >
+                                    <input type="checkbox" className="sr-only" checked={earlyRequestBodySnapshot} readOnly />
+                                    <span
+                                        className={cn(
+                                            "pointer-events-none block h-6 w-6 rounded-full bg-background shadow-lg ring-0 transition-transform flex items-center justify-center",
+                                            earlyRequestBodySnapshot ? "translate-x-5" : "translate-x-0"
+                                        )}
+                                    >
+                                        {earlyRequestBodySnapshot ? (
+                                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        ) : (
+                                            <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                                        )}
+                                    </span>
+                                </div>
+                            </div>
 
                             <div
                                 className={cn(

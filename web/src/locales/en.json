@@ -143,6 +143,8 @@
         "days": "days",
         "database_path": "Database Path",
         "database_path_hint": "This setting requires editing the config file and restarting",
+        "early_request_body_snapshot": "Early Request Body Snapshot",
+        "early_request_body_snapshot_hint": "When enabled, PrismCat saves an extra snapshot as soon as the request body is fully sent to the upstream (even if the upstream hasn't responded yet). This makes request bodies visible earlier, but adds an extra DB write per request. Disable to improve throughput (request bodies will only appear after a request completes).",
         "store_base64": "Store Base64 Data",
         "store_base64_hint": "When enabled, Base64 encoded data (e.g. images) in bodies will be stored. Disable to significantly reduce storage overhead."
     },

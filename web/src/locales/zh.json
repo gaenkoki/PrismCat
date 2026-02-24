@@ -145,6 +145,8 @@
         "days": "天",
         "database_path": "数据库路径",
         "database_path_hint": "此配置需要修改配置文件并重启服务",
+        "early_request_body_snapshot": "提前保存请求体快照",
+        "early_request_body_snapshot_hint": "开启后：当请求体已完整发送到上游但上游尚未响应时，也会先保存一次快照，方便更早在 UI 中看到 Request Body；代价：每个请求会额外多一次数据库写入（高并发下可能降低吞吐/更易丢日志）。",
         "store_base64": "存储 Base64 数据",
         "store_base64_hint": "开启后将检测并存储请求/响应体中的 Base64 编码数据 (如图片)。禁用可多维度减少存储开销。"
     },
