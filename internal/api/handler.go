@@ -255,6 +255,7 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		logging := h.cfg.LoggingSnapshot()
 		storageCfg := h.cfg.StorageSnapshot()
 		serverCfg := h.cfg.ServerSnapshot()
+		keepAlive := h.cfg.KeepAliveSnapshot()
 		h.jsonResponse(w, map[string]interface{}{
 			"version": config.Version,
 			"server": map[string]interface{}{
@@ -275,6 +276,12 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 				"blob_store":     storageCfg.BlobStore,
 				"blob_dir":       storageCfg.BlobDir,
 			},
+			"keep_alive": map[string]interface{}{
+				"enabled":          keepAlive.Enabled,
+				"url":              keepAlive.URL,
+				"interval_seconds": keepAlive.IntervalSeconds,
+				"resolved_url":     keepAlive.ResolvedKeepAliveURL(),
+			},
 		})
 		return
 	}
@@ -294,6 +301,11 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			Storage *struct {
 				RetentionDays *int `json:"retention_days"`
 			} `json:"storage"`
+			KeepAlive *struct {
+				Enabled         *bool   `json:"enabled"`
+				URL             *string `json:"url"`
+				IntervalSeconds *int    `json:"interval_seconds"`
+			} `json:"keep_alive"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -330,6 +342,18 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			if req.Storage != nil {
 				if req.Storage.RetentionDays != nil {
 					c.Storage.RetentionDays = *req.Storage.RetentionDays
+				}
+			}
+
+			if req.KeepAlive != nil {
+				if req.KeepAlive.Enabled != nil {
+					c.KeepAlive.Enabled = *req.KeepAlive.Enabled
+				}
+				if req.KeepAlive.URL != nil {
+					c.KeepAlive.URL = *req.KeepAlive.URL
+				}
+				if req.KeepAlive.IntervalSeconds != nil {
+					c.KeepAlive.IntervalSeconds = *req.KeepAlive.IntervalSeconds
 				}
 			}
 		})

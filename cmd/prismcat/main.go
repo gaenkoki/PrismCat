@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,6 +168,49 @@ func main() {
 
 	// 启动服务器
 	srv := server.New(cfg, asyncRepo, blobStore)
+
+	// 保活机制：防止 Render 等平台因无流量休眠
+	// 每次 tick 从配置动态读取 enabled/url/interval，支持控制台热切换
+	stopKeepAlive := make(chan struct{})
+	go func() {
+		// 等待服务器启动
+		time.Sleep(10 * time.Second)
+		ticker := time.NewTicker(1 * time.Minute) // 用较短间隔检查配置变更
+		defer ticker.Stop()
+		client := &http.Client{Timeout: 10 * time.Second}
+		var lastPing time.Time
+		for {
+			select {
+			case <-ticker.C:
+				ka := cfg.KeepAliveSnapshot()
+				if !ka.Enabled {
+					continue
+				}
+				pingURL := ka.ResolvedKeepAliveURL()
+				if pingURL == "" {
+					continue
+				}
+				interval := time.Duration(ka.IntervalSeconds) * time.Second
+				if interval < 60*time.Second {
+					interval = 5 * time.Minute
+				}
+				if !lastPing.IsZero() && time.Since(lastPing) < interval {
+					continue
+				}
+				resp, err := client.Get(pingURL)
+				if err != nil {
+					log.Printf("保活 ping 失败: %v", err)
+				} else {
+					resp.Body.Close()
+					log.Printf("保活 ping 成功: %s -> %d", pingURL, resp.StatusCode)
+				}
+				lastPing = time.Now()
+			case <-stopKeepAlive:
+				return
+			}
+		}
+	}()
+	defer close(stopKeepAlive)
 
 	// 平台相关的运行逻辑（Windows: 系统托盘, 其他: 直接运行）
 	if err := platformRun(srv, cfg, *showConsole); err != nil {

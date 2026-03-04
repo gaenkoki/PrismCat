@@ -148,7 +148,14 @@
         "early_request_body_snapshot": "提前保存请求体快照",
         "early_request_body_snapshot_hint": "开启后：当请求体已完整发送到上游但上游尚未响应时，也会先保存一次快照，方便更早在 UI 中看到 Request Body；代价：每个请求会额外多一次数据库写入（高并发下可能降低吞吐/更易丢日志）。",
         "store_base64": "存储 Base64 数据",
-        "store_base64_hint": "开启后将检测并存储请求/响应体中的 Base64 编码数据 (如图片)。禁用可多维度减少存储开销。"
+        "store_base64_hint": "开启后将检测并存储请求/响应体中的 Base64 编码数据 (如图片)。禁用可多维度减少存储开销。",
+        "keep_alive": "服务保活",
+        "keep_alive_hint": "定期向自身发送健康检查请求，防止 Render 等平台因无流量自动休眠。",
+        "keep_alive_url": "保活 URL",
+        "keep_alive_url_hint": "留空将自动使用 Render 注入的外部 URL。自定义部署可手动填写完整的健康检查地址。",
+        "keep_alive_auto_detected": "自动检测",
+        "keep_alive_interval": "Ping 间隔 (秒)",
+        "keep_alive_interval_hint": "建议 300 秒（5 分钟），最小 60 秒。"
     },
     "playground": {
         "title": "Playground",

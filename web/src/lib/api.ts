@@ -137,6 +137,12 @@ export interface AppConfig {
         database: string
         retention_days: number
     }
+    keep_alive: {
+        enabled: boolean
+        url: string
+        interval_seconds: number
+        resolved_url: string
+    }
 }
 
 export interface ConfigUpdate {
@@ -151,6 +157,11 @@ export interface ConfigUpdate {
     }
     storage?: {
         retention_days?: number
+    }
+    keep_alive?: {
+        enabled?: boolean
+        url?: string
+        interval_seconds?: number
     }
 }
 
