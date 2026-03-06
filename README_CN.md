@@ -4,9 +4,9 @@
 
 ![GitHub Release](https://img.shields.io/github/v/release/paopaoandlingyia/PrismCat) ![License](https://img.shields.io/github/license/paopaoandlingyia/PrismCat) ![Docker Image](https://img.shields.io/badge/image-ghcr.io%2Fpaopaoandlingyia%2Fprismcat-blue)
 
-**PrismCat** 是一个专为开发者设计的本地 **LLM API 透传代理与流量观测工具**。
+**PrismCat** 是一款专为开发者设计的、支持私有化部署 (Self-hosted) 的 **LLM API 透传代理与流量观测工具**。
 
-它能帮助你在本地开发大模型应用时，清晰地观测到发送给上游的每一个字节，支持完整记录 Streaming 响应，并提供类似 Postman 的请求重放（Replay）功能。
+无论是本地开发还是团队云端共享，它都能帮助你清晰地观测发送给上游的每一个字节，支持完整记录 Streaming 响应，并提供类似 Postman 的请求重放（Replay）功能。
 
 ---
 
@@ -38,7 +38,7 @@
 
 - **mitmproxy / 浏览器 Network**：很强但偏底层；Streaming + 长期日志浏览/重放会比较痛苦。
 - **Langfuse / Helicone 等**：更偏生产可观测性，通常需要接入 SDK 或依赖外部服务端。
-- **PrismCat**：本地优先、透明代理、单文件部署，专门针对 LLM API 流量做了优化。
+- **PrismCat**：私有化部署、透明代理、跨平台支持 (单二进制/Docker)，专门针对 LLM API 流量做了优化，数据完全掌握在自己手中。
 
 ---
 

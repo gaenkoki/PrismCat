@@ -4,7 +4,7 @@
 
 ![GitHub Release](https://img.shields.io/github/v/release/paopaoandlingyia/PrismCat) ![License](https://img.shields.io/github/license/paopaoandlingyia/PrismCat) ![Docker Image](https://img.shields.io/badge/image-ghcr.io%2Fpaopaoandlingyia%2Fprismcat-blue)
 
-**PrismCat** is a lightweight, local-first **LLM API Transparent Proxy & Traffic Observability Tool** designed for developers.
+**PrismCat** is a lightweight, self-hosted **LLM API Transparent Proxy & Traffic Observability Tool** designed for developers.
 
 Stop guessing what's happening behind your LLM SDKs. PrismCat lets you observe every byte sent to upstream providers, supports full streaming (SSE) logging, and provides a Postman-like **Replay** feature—usually with only a `base_url` change.
 
@@ -20,7 +20,7 @@ Stop guessing what's happening behind your LLM SDKs. PrismCat lets you observe e
 - 🏷️ **Log Tagging**: Simply add `X-PrismCat-Tag: your-tag` to your client request headers to categorize logs. Perfect for differentiating sessions or users in a shared environment.
 - 🎮 **Developer Toolbox**: Built-in **Playground** for replaying requests, real-time stats dashboard, and full i18n support.
 - 🔐 **Privacy & Security**:
-    - Local-first storage using **SQLite**. No third-party servers involved.
+    - **Self-Hosted & Private**: Uses local SQLite. No third-party servers involved, ensuring your data stays yours.
     - Automatic sensitive header masking (`Authorization`, `api-key`).
 - 📦 **High Performance**: Single-binary deployment with asynchronous log writing and automatic log retention/cleanup.
 
@@ -39,7 +39,7 @@ Stop guessing what's happening behind your LLM SDKs. PrismCat lets you observe e
 
 - **mitmproxy / browser DevTools**: powerful but low-level; streaming + long-term log browsing/replay is painful.
 - **Langfuse / Helicone / etc.**: great for production observability, but often needs SDK instrumentation or a hosted backend.
-- **PrismCat**: local-first, transparent proxy, single-binary, and optimized specifically for LLM API traffic.
+- **PrismCat**: self-hosted, transparent proxy, runs anywhere (single-binary/Docker), and optimized specifically for LLM API traffic.
 
 ---
 
