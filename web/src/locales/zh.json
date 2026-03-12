@@ -89,6 +89,7 @@
         "stream_raw": "原始数据",
         "stream_merge_info": "已合并 {{count}} 个流式分片",
         "stream_merge_format": "格式: {{format}}",
+        "stream_merge_protocol": "协议: {{protocol}}",
         "detached_tag": "已分离",
         "truncated_tag": "已截断"
     },
@@ -175,3 +176,4 @@
         "empty_state_hint": "选择上游、填写路径和请求体，然后点击发送按钮或按 Ctrl+Enter"
     }
 }
+

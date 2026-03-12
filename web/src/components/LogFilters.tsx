@@ -75,11 +75,11 @@ export function LogFilters({
     const hasChanges = isPathChanged || isUpstreamChanged || isMethodChanged || isStatusCodeChanged || isTagChanged || isTimeChanged
 
     return (
-        <div className="flex flex-col gap-4 px-4 pr-6 py-2">
+        <div className="flex flex-col gap-4 px-0 py-2 sm:px-4 sm:pr-6">
             {/* 第一行：筛选条件 */}
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                 {/* 搜索框 */}
-                <div className="relative flex-1 min-w-[240px] max-w-sm">
+                <div className="relative w-full flex-1 min-w-0 sm:min-w-[240px] sm:max-w-sm">
                     <div className="relative">
                         <Input
                             placeholder={t('filters.search_path')}
@@ -111,7 +111,7 @@ export function LogFilters({
                     onValueChange={(val) => setDraft({ ...draft, upstream: val === "all" ? "" : val })}
                 >
                     <SelectTrigger className={cn(
-                        "w-[160px] h-10 bg-background/50 border-border/50",
+                        "w-full h-10 bg-background/50 border-border/50 sm:w-[160px]",
                         isUpstreamChanged && "border-primary/50 ring-1 ring-primary/20"
                     )}>
                         <SelectValue placeholder={t('filters.all_upstreams')} />
@@ -132,7 +132,7 @@ export function LogFilters({
                     onValueChange={(val) => setDraft({ ...draft, method: val === "all" ? "" : val })}
                 >
                     <SelectTrigger className={cn(
-                        "w-[120px] h-10 bg-background/50 border-border/50",
+                        "w-full h-10 bg-background/50 border-border/50 sm:w-[120px]",
                         isMethodChanged && "border-primary/50 ring-1 ring-primary/20"
                     )}>
                         <SelectValue placeholder={t('filters.all_methods')} />
@@ -146,7 +146,7 @@ export function LogFilters({
                 </Select>
 
                 {/* 状态码筛选 */}
-                <div className="relative w-[100px]">
+                <div className="relative w-full sm:w-[100px]">
                     <Input
                         type="text"
                         placeholder={t('filters.status_code')}
@@ -168,7 +168,7 @@ export function LogFilters({
                 </div>
 
                 {/* Tag 筛选 */}
-                <div className="relative min-w-[140px] max-w-[200px]">
+                <div className="relative w-full min-w-0 sm:min-w-[140px] sm:max-w-[200px]">
                     <Input
                         placeholder={t('filters.tag_placeholder')}
                         value={draft.tag || ''}
@@ -187,10 +187,10 @@ export function LogFilters({
             </div>
 
             {/* 第二行：时间范围 + 操作按钮 */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 {/* 时间范围选择器 */}
                 <div className={cn(
-                    "rounded-lg transition-all",
+                    "w-full rounded-lg transition-all sm:w-auto",
                     isTimeChanged && "ring-2 ring-primary/20 border-primary/40"
                 )}>
                     <DateRangePicker
@@ -201,7 +201,7 @@ export function LogFilters({
                     />
                 </div>
 
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
                     {/* 查询按钮 */}
                     <Button
                         variant="default"
@@ -209,7 +209,7 @@ export function LogFilters({
                         onClick={handleSearch}
                         disabled={loading}
                         className={cn(
-                            "h-10 px-6 font-bold transition-all shadow-lg",
+                            "h-10 flex-1 px-6 font-bold justify-center transition-all shadow-lg sm:flex-none",
                             hasChanges
                                 ? "bg-primary hover:bg-primary/90 shadow-primary/20 scale-105"
                                 : "bg-primary/80 hover:bg-primary shadow-primary/10"
@@ -224,7 +224,7 @@ export function LogFilters({
                         variant="outline"
                         size="sm"
                         onClick={handleReset}
-                        className="text-muted-foreground hover:text-foreground h-10 px-4 border-border/50 bg-background/50"
+                        className="h-10 flex-1 px-4 border-border/50 bg-background/50 text-muted-foreground hover:text-foreground sm:flex-none"
                     >
                         <RotateCcw className="h-4 w-4 mr-2" />
                         <span>{t('filters.reset')}</span>
@@ -233,7 +233,7 @@ export function LogFilters({
             </div>
 
             {/* 分页 */}
-            <div className="flex items-center justify-between border-t border-border/40 pt-4">
+            <div className="flex flex-col gap-3 border-t border-border/40 pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
                         {t('filters.total_count', { count: total })}
@@ -245,7 +245,7 @@ export function LogFilters({
                     )}
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
                     <Button
                         variant="outline"
                         size="icon"
@@ -276,3 +276,4 @@ export function LogFilters({
         </div>
     )
 }
+

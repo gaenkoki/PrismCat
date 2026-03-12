@@ -1,5 +1,5 @@
-import { cn, formatDate, formatLatency, getStatusColor, getMethodColor } from '@/lib/utils'
-import { Zap } from 'lucide-react'
+import { cn, formatDate, formatLatency, getMethodColor, getStatusColor } from '@/lib/utils'
+import { ChevronRight, Clock3, Server, Tag as TagIcon, Zap } from 'lucide-react'
 import type { RequestLog } from '@/lib/api'
 import { useTranslation } from 'react-i18next'
 import {
@@ -25,45 +25,174 @@ interface LogTableProps {
     selectedId?: string
 }
 
+function getStatusBadgeColor(code: number): string {
+    if (code >= 200 && code < 300) return 'bg-green-500/10 text-green-600 border-green-500/20 dark:text-green-400'
+    if (code >= 300 && code < 400) return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20 dark:text-yellow-400'
+    if (code >= 400 && code < 500) return 'bg-orange-500/10 text-orange-600 border-orange-500/20 dark:text-orange-400'
+    if (code >= 500) return 'bg-red-500/10 text-red-600 border-red-500/20 dark:text-red-400'
+    return 'bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400'
+}
+
+function MobileLogSkeleton() {
+    return (
+        <div className="space-y-3 md:hidden">
+            {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="rounded-2xl border border-border/40 bg-card/40 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                        <Skeleton className="h-6 w-16 rounded-full bg-muted/50" />
+                        <Skeleton className="h-6 w-14 rounded-full bg-muted/50" />
+                        <Skeleton className="ml-auto h-5 w-12 rounded-md bg-muted/50" />
+                    </div>
+                    <Skeleton className="h-4 w-full bg-muted/50" />
+                    <Skeleton className="h-4 w-3/4 bg-muted/50" />
+                    <div className="flex gap-2">
+                        <Skeleton className="h-5 w-20 rounded-full bg-muted/50" />
+                        <Skeleton className="h-5 w-16 rounded-full bg-muted/50" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+function DesktopLogSkeleton({ t }: { t: (key: string) => string }) {
+    return (
+        <div className="hidden rounded-xl border border-border/50 overflow-hidden bg-card/30 md:block">
+            <Table>
+                <TableHeader className="bg-muted/50">
+                    <TableRow>
+                        <TableHead className="w-[80px]">{t('log_table.method')}</TableHead>
+                        <TableHead className="w-[70px]">{t('log_table.status')}</TableHead>
+                        <TableHead className="w-[100px]">{t('log_table.upstream')}</TableHead>
+                        <TableHead>{t('log_table.path')}</TableHead>
+                        <TableHead className="w-[80px] text-right">{t('log_table.latency')}</TableHead>
+                        <TableHead className="w-[160px] text-right">{t('log_table.time')}</TableHead>
+                        <TableHead className="w-[100px]"></TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {Array.from({ length: 8 }).map((_, rowIndex) => (
+                        <TableRow key={rowIndex}>
+                            {Array.from({ length: 7 }).map((_, cellIndex) => (
+                                <TableCell key={cellIndex}>
+                                    <Skeleton className="h-5 w-full bg-muted/50" />
+                                </TableCell>
+                            ))}
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </div>
+    )
+}
+
+function MobileLogCard({
+    log,
+    selected,
+    onSelect,
+    dateLabel,
+    detailLabel,
+    tagLabel,
+    streamingLabel,
+}: {
+    log: RequestLog
+    selected: boolean
+    onSelect: (log: RequestLog) => void
+    dateLabel: string
+    detailLabel: string
+    tagLabel: string
+    streamingLabel: string
+}) {
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(log)}
+            className={cn(
+                'w-full rounded-2xl border p-4 text-left transition-all active:scale-[0.99]',
+                selected
+                    ? 'border-primary/40 bg-primary/10 shadow-lg shadow-primary/10'
+                    : 'border-border/40 bg-card/40 hover:border-primary/20 hover:bg-card/70'
+            )}
+        >
+            <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span
+                            className={cn(
+                                'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em]',
+                                getMethodColor(log.method)
+                            )}
+                        >
+                            {log.method}
+                        </span>
+                        <span
+                            className={cn(
+                                'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black tracking-wider',
+                                getStatusBadgeColor(log.status_code)
+                            )}
+                        >
+                            {log.status_code || '---'}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">
+                            <Server className="h-3 w-3" />
+                            <span className="truncate max-w-[120px]">{log.upstream}</span>
+                        </span>
+                        {log.streaming && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-600 dark:text-violet-400">
+                                <Zap className="h-3 w-3" />
+                                {streamingLabel}
+                            </span>
+                        )}
+                        {log.tag && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
+                                <TagIcon className="h-3 w-3" />
+                                <span className="truncate max-w-[120px]">{log.tag}</span>
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <div className="font-mono text-xs leading-relaxed text-foreground/90 break-all">
+                            {log.path}
+                            {log.query && <span className="text-muted-foreground/60">?{log.query}</span>}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/70">
+                            <span className="inline-flex items-center gap-1">
+                                <Clock3 className="h-3.5 w-3.5" />
+                                {formatLatency(log.latency_ms)}
+                            </span>
+                            <span>{dateLabel}</span>
+                            {log.tag && <span>{tagLabel}</span>}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground/80">
+                    <span>{detailLabel}</span>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                </div>
+            </div>
+        </button>
+    )
+}
+
 export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps) {
     const { t, i18n } = useTranslation()
 
     if (loading) {
         return (
-            <div className="rounded-xl border border-border/50 overflow-hidden bg-card/30">
-                <Table>
-                    <TableHeader className="bg-muted/50">
-                        <TableRow>
-                            <TableHead className="w-[80px]">{t('log_table.method')}</TableHead>
-                            <TableHead className="w-[70px]">{t('log_table.status')}</TableHead>
-                            <TableHead className="w-[100px]">{t('log_table.upstream')}</TableHead>
-                            <TableHead>{t('log_table.path')}</TableHead>
-                            <TableHead className="w-[80px] text-right">{t('log_table.latency')}</TableHead>
-                            <TableHead className="w-[160px] text-right">{t('log_table.time')}</TableHead>
-                            <TableHead className="w-[100px]"></TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {Array.from({ length: 8 }).map((_, i) => (
-                            <TableRow key={i}>
-                                {Array.from({ length: 7 }).map((_, j) => (
-                                    <TableCell key={j}>
-                                        <Skeleton className="h-5 w-full bg-muted/50" />
-                                    </TableCell>
-                                ))}
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
+            <>
+                <MobileLogSkeleton />
+                <DesktopLogSkeleton t={t} />
+            </>
         )
     }
 
     if (logs.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-24 text-muted-foreground bg-card/20 rounded-2xl border border-dashed border-border/50">
-                <div className="text-6xl mb-6 grayscale opacity-50">📭</div>
-                <div className="text-xl font-semibold tracking-tight text-foreground/70">{t('log_table.no_logs')}</div>
+            <div className="flex flex-col items-center justify-center py-20 sm:py-24 text-muted-foreground bg-card/20 rounded-2xl border border-dashed border-border/50 px-6">
+                <div className="text-5xl sm:text-6xl mb-6 grayscale opacity-50">📭</div>
+                <div className="text-lg sm:text-xl font-semibold tracking-tight text-foreground/70 text-center">{t('log_table.no_logs')}</div>
                 <p className="text-sm mt-2 max-w-[280px] text-center leading-relaxed font-medium opacity-60">
                     {t('log_table.send_requests_hint', '发送一些请求后这里会显示日志')}
                 </p>
@@ -72,114 +201,133 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
     }
 
     return (
-        <div className="rounded-xl border border-border/40 overflow-hidden bg-card/30 backdrop-blur-sm">
-            <Table>
-                <TableHeader className="bg-muted/30">
-                    <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-[80px] font-bold text-[11px] uppercase tracking-tighter">{t('log_table.method')}</TableHead>
-                        <TableHead className="w-[70px] font-bold text-[11px] uppercase tracking-tighter text-center">{t('log_table.status')}</TableHead>
-                        <TableHead className="w-[100px] font-bold text-[11px] uppercase tracking-tighter">{t('log_table.upstream')}</TableHead>
-                        <TableHead className="font-bold text-[11px] uppercase tracking-tighter">{t('log_table.path')}</TableHead>
-                        <TableHead className="w-[100px] font-bold text-[11px] uppercase tracking-tighter text-right">{t('log_table.latency')}</TableHead>
-                        <TableHead className="w-[180px] font-bold text-[11px] uppercase tracking-tighter text-right">{t('log_table.time')}</TableHead>
-                        <TableHead className="w-[100px]"></TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {logs.map((log) => (
-                        <TableRow
-                            key={log.id}
-                            className={cn(
-                                "transition-colors border-border/20",
-                                selectedId === log.id ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/40"
-                            )}
-                        >
-                            <TableCell>
-                                <div
-                                    className={cn(
-                                        "w-[50px] py-0.5 rounded-[3px] text-[10px] text-center uppercase font-bold border",
-                                        getMethodColor(log.method)
-                                    )}
-                                >
-                                    {log.method}
-                                </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                                <span className={cn(
-                                    "font-mono text-xs font-bold",
-                                    getStatusColor(log.status_code)
-                                )}>
-                                    {log.status_code || '---'}
-                                </span>
-                            </TableCell>
-                            <TableCell>
-                                <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground/60 truncate block max-w-[90px]">
-                                    {log.upstream}
-                                </span>
-                            </TableCell>
-                            <TableCell className="max-w-0">
-                                <div className="flex items-center gap-2">
-                                    <span className="truncate font-mono text-xs text-foreground/90 select-text">
-                                        {log.path}
-                                        {log.query && <span className="text-muted-foreground/50">?{log.query}</span>}
-                                    </span>
-                                    {log.tag && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <span className="shrink-0 inline-flex items-center h-[18px] px-1.5 rounded-[3px] text-[9px] font-black uppercase tracking-tight bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                                    {log.tag}
-                                                </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="right">
-                                                <p className="text-[10px] font-bold uppercase">{t('log_table.tag')}: {log.tag}</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-                                    {log.streaming && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <div className="shrink-0 animate-pulse">
-                                                    <Zap className="h-3 w-3 text-purple-500 fill-purple-500/20" />
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="right">
-                                                <p className="text-[10px] font-bold uppercase">{t('log_detail.streaming', '流式响应')}</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-                                </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                                <span className="text-xs text-muted-foreground font-mono font-medium">
-                                    {formatLatency(log.latency_ms)}
-                                </span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                                <span className="text-[11px] text-muted-foreground/60 font-medium">
-                                    {formatDate(log.created_at, i18n.language)}
-                                </span>
-                            </TableCell>
-                            <TableCell>
-                                <div className="flex justify-end transition-opacity">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className={cn(
-                                            "h-7 text-[11px] font-black px-6 min-w-[80px] rounded-md transition-all active:scale-95",
-                                            selectedId === log.id
-                                                ? "bg-primary text-primary-foreground"
-                                                : "text-muted-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground"
-                                        )}
-                                        onClick={() => onSelect(log)}
-                                    >
-                                        {t('common.details')}
-                                    </Button>
-                                </div>
-                            </TableCell>
+        <>
+            <div className="space-y-3 md:hidden">
+                {logs.map((log) => (
+                    <MobileLogCard
+                        key={log.id}
+                        log={log}
+                        selected={selectedId === log.id}
+                        onSelect={onSelect}
+                        dateLabel={formatDate(log.created_at, i18n.language)}
+                        detailLabel={t('common.details')}
+                        tagLabel={`${t('log_table.tag')}: ${log.tag}`}
+                        streamingLabel={t('log_detail.streaming', '流式')}
+                    />
+                ))}
+            </div>
+
+            <div className="hidden rounded-xl border border-border/40 overflow-hidden bg-card/30 backdrop-blur-sm md:block">
+                <Table>
+                    <TableHeader className="bg-muted/30">
+                        <TableRow className="hover:bg-transparent">
+                            <TableHead className="w-[80px] font-bold text-[11px] uppercase tracking-tighter">{t('log_table.method')}</TableHead>
+                            <TableHead className="w-[70px] font-bold text-[11px] uppercase tracking-tighter text-center">{t('log_table.status')}</TableHead>
+                            <TableHead className="w-[100px] font-bold text-[11px] uppercase tracking-tighter">{t('log_table.upstream')}</TableHead>
+                            <TableHead className="font-bold text-[11px] uppercase tracking-tighter">{t('log_table.path')}</TableHead>
+                            <TableHead className="w-[100px] font-bold text-[11px] uppercase tracking-tighter text-right">{t('log_table.latency')}</TableHead>
+                            <TableHead className="w-[180px] font-bold text-[11px] uppercase tracking-tighter text-right">{t('log_table.time')}</TableHead>
+                            <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </div>
+                    </TableHeader>
+                    <TableBody>
+                        {logs.map((log) => (
+                            <TableRow
+                                key={log.id}
+                                className={cn(
+                                    'transition-colors border-border/20',
+                                    selectedId === log.id ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/40'
+                                )}
+                            >
+                                <TableCell>
+                                    <div
+                                        className={cn(
+                                            'inline-flex items-center justify-center min-w-[56px] h-6 px-2 rounded-md border text-[10px] font-black uppercase tracking-[0.18em]',
+                                            getMethodColor(log.method)
+                                        )}
+                                    >
+                                        {log.method}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    <span
+                                        className={cn(
+                                            'font-mono text-xs font-bold',
+                                            getStatusColor(log.status_code)
+                                        )}
+                                    >
+                                        {log.status_code || '---'}
+                                    </span>
+                                </TableCell>
+                                <TableCell>
+                                    <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground/60 truncate block max-w-[90px]">
+                                        {log.upstream}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="max-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="truncate font-mono text-xs text-foreground/90 select-text">
+                                            {log.path}
+                                            {log.query && <span className="text-muted-foreground/50">?{log.query}</span>}
+                                        </span>
+                                        {log.tag && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span className="shrink-0 inline-flex items-center h-[18px] px-1.5 rounded-[3px] text-[9px] font-black uppercase tracking-tight bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                                        {log.tag}
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right">
+                                                    <p className="text-[10px] font-bold uppercase">{t('log_table.tag')}: {log.tag}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                        {log.streaming && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="shrink-0 animate-pulse">
+                                                        <Zap className="h-3 w-3 text-purple-500 fill-purple-500/20" />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right">
+                                                    <p className="text-[10px] font-bold uppercase">{t('log_detail.streaming', '流式响应')}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <span className="text-xs text-muted-foreground font-mono font-medium">
+                                        {formatLatency(log.latency_ms)}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <span className="text-[11px] text-muted-foreground/60 font-medium">
+                                        {formatDate(log.created_at, i18n.language)}
+                                    </span>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex justify-end transition-opacity">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className={cn(
+                                                'h-7 text-[11px] font-black px-6 min-w-[80px] rounded-md transition-all active:scale-95',
+                                                selectedId === log.id
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : 'text-muted-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground'
+                                            )}
+                                            onClick={() => onSelect(log)}
+                                        >
+                                            {t('common.details')}
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        </>
     )
 }

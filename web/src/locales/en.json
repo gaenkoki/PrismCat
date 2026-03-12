@@ -87,6 +87,7 @@
         "stream_raw": "Raw Data",
         "stream_merge_info": "Merged {{count}} stream chunks",
         "stream_merge_format": "Format: {{format}}",
+        "stream_merge_protocol": "Protocol: {{protocol}}",
         "detached_tag": "DETACHED",
         "truncated_tag": "TRUNCATED"
     },
@@ -173,3 +174,4 @@
         "empty_state_hint": "Select an upstream, fill in the path and body, then click Send or press Ctrl+Enter"
     }
 }
+

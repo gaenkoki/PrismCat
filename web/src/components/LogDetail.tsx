@@ -484,6 +484,8 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                                     {t('log_detail.stream_merge_info', { count: mergedResponse.chunks })}
                                                     {' · '}
                                                     {t('log_detail.stream_merge_format', { format: mergedResponse.format.toUpperCase() })}
+                                                    {' · '}
+                                                    {t('log_detail.stream_merge_protocol', { protocol: mergedResponse.protocol.toUpperCase() })}
                                                 </span>
                                             )}
                                         </div>
@@ -571,4 +573,5 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
         </Sheet>
     )
 }
+
 

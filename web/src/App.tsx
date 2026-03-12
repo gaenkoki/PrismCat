@@ -15,7 +15,7 @@ import { fetchConfig } from '@/lib/api'
 function AppLayout() {
   const { t, i18n } = useTranslation()
   const location = useLocation()
-  const [version, setVersion] = useState<string>('v1.1.0') // 初始显式 v1.1.0，直到接口返回
+  const [version, setVersion] = useState<string>('v1.2.0') // 初始显式 v1.2.0，直到接口返回
 
   useEffect(() => {
     fetchConfig()
@@ -37,20 +37,20 @@ function AppLayout() {
     <div className="min-h-screen">
       {/* 头部 */}
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/80">
-        <div className="w-full px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
+        <div className="w-full px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex items-start justify-between gap-3 sm:items-center">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-6">
               {/* Logo */}
               <a
                 href="https://github.com/paopaoandlingyia/PrismCat"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 transition-opacity hover:opacity-80"
+                className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-80 sm:gap-3"
               >
                 <div className="relative">
                   <PrismCatLogo className="h-9 w-9" />
                 </div>
-                <h1 className="text-xl font-bold prism-gradient-text tracking-tight">
+                <h1 className="truncate text-lg font-bold prism-gradient-text tracking-tight sm:text-xl">
                   {t('app.title')}
                 </h1>
               </a>
@@ -80,11 +80,11 @@ function AppLayout() {
             </div>
 
             {/* 右侧操作 */}
-            <div className="flex items-center gap-4">
+            <div className="shrink-0 flex items-center gap-2 sm:gap-4">
               <ThemeToggle />
               <button
                 onClick={() => i18n.changeLanguage(i18n.language === 'zh' ? 'en' : 'zh')}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent/50 border border-border/50 text-[11px] font-black uppercase tracking-widest hover:bg-accent hover:border-border transition-all text-muted-foreground hover:text-foreground min-w-[110px] active:scale-95"
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border/50 bg-accent/50 px-3 text-[11px] font-black uppercase tracking-widest text-muted-foreground transition-all hover:border-border hover:bg-accent hover:text-foreground active:scale-95 sm:min-w-[110px] sm:px-4"
               >
                 <Globe className="h-3.5 w-3.5" />
                 <span>{i18n.language === 'zh' ? 'English' : '中文'}</span>
@@ -93,7 +93,7 @@ function AppLayout() {
           </div>
 
           {/* 移动端导航 */}
-          <nav className="flex md:hidden items-center gap-2 mt-4 -mx-2">
+          <nav className="mt-3 flex items-center gap-1.5 md:hidden sm:mt-4 sm:-mx-2 sm:gap-2">
             {navItems.map((item) => {
               const isActive = location.pathname === item.to
               const Icon = item.icon
@@ -102,7 +102,7 @@ function AppLayout() {
                   key={item.to}
                   to={item.to}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all',
+                    'flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium transition-all sm:px-4 sm:py-3 sm:text-sm',
                     isActive
                       ? 'bg-primary/10 text-primary shadow-sm'
                       : 'text-muted-foreground hover:text-white hover:bg-white/5'
@@ -118,7 +118,7 @@ function AppLayout() {
       </header>
 
       {/* 主内容 */}
-      <main className="w-full px-6 py-6 space-y-6">
+      <main className="w-full px-4 py-5 space-y-6 sm:px-6 sm:py-6">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/playground" element={<Playground />} />
@@ -127,7 +127,7 @@ function AppLayout() {
       </main>
 
       {/* 页脚版本号 */}
-      <footer className="w-full px-6 py-4 flex justify-center items-center">
+      <footer className="flex w-full items-center justify-center px-4 py-4 sm:px-6">
         <p className="text-muted-foreground/20 text-[10px] font-bold tracking-[0.2em] uppercase select-none">
           PrismCat {version}
         </p>
@@ -148,3 +148,5 @@ function App() {
 }
 
 export default App
+
+

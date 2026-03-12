@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import 'react-datepicker/dist/react-datepicker.css'
 
-// 注册中文 locale
 registerLocale('zh', zhCN)
 
 export interface DateTimeValue {
@@ -24,7 +23,6 @@ interface DateTimePickerProps {
     placement?: 'bottom-start' | 'bottom-end'
 }
 
-// 单个日期时间选择器的自定义输入框
 const DateTimeInput = forwardRef<HTMLButtonElement, { value?: string; onClick?: () => void; placeholder?: string }>(
     ({ value, onClick, placeholder }, ref) => (
         <Button
@@ -33,7 +31,7 @@ const DateTimeInput = forwardRef<HTMLButtonElement, { value?: string; onClick?: 
             variant="outline"
             type="button"
             className={cn(
-                'flex items-center gap-2.5 px-3 h-10 rounded-lg text-sm transition-all min-w-[170px] border-border/50 bg-background/50',
+                'flex w-full items-center justify-start gap-2.5 px-3 h-10 rounded-lg text-sm transition-all min-w-0 sm:min-w-[170px] border-border/50 bg-background/50',
                 'hover:border-primary/50 hover:bg-accent/50',
                 !value && 'text-muted-foreground'
             )}
@@ -47,7 +45,6 @@ const DateTimeInput = forwardRef<HTMLButtonElement, { value?: string; onClick?: 
 )
 DateTimeInput.displayName = 'DateTimeInput'
 
-// 单个日期时间选择器组件
 function DateTimePicker({ value, onChange, placeholder, maxDate, minDate, placement = 'bottom-start' }: DateTimePickerProps) {
     const { i18n } = useTranslation()
 
@@ -99,7 +96,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
     }
 
     return (
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <DateTimePicker
                 value={startDate}
                 onChange={handleStartChange}
@@ -107,7 +104,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
                 maxDate={endDate || new Date()}
                 placement="bottom-start"
             />
-            <span className="text-muted-foreground/30 text-sm font-bold mx-1">/</span>
+            <span className="hidden text-muted-foreground/30 text-sm font-bold mx-1 sm:inline">/</span>
             <DateTimePicker
                 value={endDate}
                 onChange={handleEndChange}

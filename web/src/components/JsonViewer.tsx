@@ -164,7 +164,7 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
         <>
             {/* Header: { or [ */}
             <div
-                className="cursor-pointer hover:bg-muted/30 rounded-sm transition-colors inline-flex items-center"
+                className="cursor-pointer hover:bg-muted/30 rounded-sm transition-colors flex items-center w-fit"
                 onClick={() => setExpanded(!expanded)}
             >
                 <span className="text-muted-foreground/30 select-none">{pad}</span>
