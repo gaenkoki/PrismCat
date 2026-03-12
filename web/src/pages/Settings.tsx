@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Plus, Trash2, Save, Database, FileText, Upload, AlertCircle, ShieldAlert, HardDrive, Clock, Globe, Copy, ArrowRight, Image as ImageIcon, HeartPulse } from 'lucide-react'
+import { Plus, Trash2, Save, Database, FileText, Upload, AlertCircle, ShieldAlert, HardDrive, Clock, Globe, Copy, ArrowRight, Image as ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from "@/components/ui/badge"
 
@@ -31,6 +31,10 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+function getErrorMessage(error: unknown, fallback: string) {
+    return error instanceof Error ? error.message : fallback
+}
+
 export function Settings() {
     const { t } = useTranslation()
     const [upstreams, setUpstreams] = useState<Upstream[]>([])
@@ -55,11 +59,6 @@ export function Settings() {
     // 表单状态 - 存储配置
     const [retentionDays, setRetentionDays] = useState(30)
 
-    // 表单状态 - 保活配置
-    const [keepAliveEnabled, setKeepAliveEnabled] = useState(false)
-    const [keepAliveURL, setKeepAliveURL] = useState('')
-    const [keepAliveInterval, setKeepAliveInterval] = useState(300)
-    const [keepAliveResolvedURL, setKeepAliveResolvedURL] = useState('')
 
     // 从 config 中提取域名后缀（如 localhost / prismcat.example.com）
     const domainSuffix = config?.server?.proxy_domains?.[0] || 'localhost'
@@ -75,6 +74,11 @@ export function Settings() {
     const getProxyUrl = useCallback((name: string) => {
         return `${proxyBase.proto}//${name}.${domainSuffix}${proxyBase.portSuffix}`
     }, [proxyBase, domainSuffix])
+
+    const copyText = useCallback(async (text: string) => {
+        await navigator.clipboard.writeText(text)
+        toast.success(t('log_detail.copy_success'))
+    }, [t])
 
     const loadData = useCallback(async () => {
         setLoading(true)
@@ -96,13 +100,6 @@ export function Settings() {
             setEarlyRequestBodySnapshot(configData.logging.early_request_body_snapshot)
             setRetentionDays(configData.storage.retention_days)
 
-            // 保活配置
-            if (configData.keep_alive) {
-                setKeepAliveEnabled(configData.keep_alive.enabled)
-                setKeepAliveURL(configData.keep_alive.url || '')
-                setKeepAliveInterval(configData.keep_alive.interval_seconds || 300)
-                setKeepAliveResolvedURL(configData.keep_alive.resolved_url || '')
-            }
         } catch (err) {
             console.error('Failed to load settings:', err)
             toast.error(t('common.error'))
@@ -125,8 +122,8 @@ export function Settings() {
             setNewTimeout(30)
             loadData()
             toast.success(t('settings.upstream_added'))
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         }
     }
 
@@ -137,8 +134,8 @@ export function Settings() {
             await removeUpstream(name)
             loadData()
             toast.success(t('settings.upstream_removed'))
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         }
     }
 
@@ -159,8 +156,8 @@ export function Settings() {
             })
             toast.success(t('settings.config_saved'))
             loadData()
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         } finally {
             setSaving(false)
         }
@@ -174,16 +171,11 @@ export function Settings() {
                 storage: {
                     retention_days: retentionDays,
                 },
-                keep_alive: {
-                    enabled: keepAliveEnabled,
-                    url: keepAliveURL,
-                    interval_seconds: keepAliveInterval,
-                },
             })
             toast.success(t('settings.config_saved'))
             loadData()
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         } finally {
             setSaving(false)
         }
@@ -298,10 +290,7 @@ export function Settings() {
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <button
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(getProxyUrl(u.name))
-                                                            toast.success(t('log_detail.copy_success'))
-                                                        }}
+                                                        onClick={() => void copyText(getProxyUrl(u.name))}
                                                         className="flex items-center gap-1.5 text-xs font-mono text-primary/60 hover:text-primary transition-colors cursor-pointer text-left"
                                                     >
                                                         <span className="truncate underline decoration-primary/10 underline-offset-4 font-bold">{getProxyUrl(u.name)}</span>
@@ -322,10 +311,21 @@ export function Settings() {
 
                                     <div className="flex-1 min-w-0 sm:max-w-[30%] space-y-1">
                                         <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">{t('upstream_manager.target')}</div>
-                                        <div className="text-[11px] text-foreground/60 font-mono truncate bg-muted/20 px-0.5 py-0.5 rounded-md flex items-center" title={u.target}>
-                                            <Globe className="h-3 w-3 mr-2 text-muted-foreground/20" />
-                                            {u.target}
-                                        </div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void copyText(u.target)}
+                                                    className="w-full text-[11px] text-foreground/60 font-mono truncate bg-muted/20 px-2 py-1 rounded-md flex items-center gap-2 hover:bg-muted/40 hover:text-foreground transition-colors text-left"
+                                                    title={u.target}
+                                                >
+                                                    <Globe className="h-3 w-3 shrink-0 text-muted-foreground/20" />
+                                                    <span className="min-w-0 flex-1 truncate">{u.target}</span>
+                                                    <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>{t('common.copy')}</TooltipContent>
+                                        </Tooltip>
                                     </div>
 
                                     <div className="flex items-center justify-between sm:justify-end gap-4 mt-2 sm:mt-0">
@@ -603,120 +603,17 @@ export function Settings() {
                                         <code className="flex-1 text-[10px] font-mono break-all text-muted-foreground group-hover:text-foreground transition-colors">{config.storage.database}</code>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => {
-                                                    navigator.clipboard.writeText(config.storage.database)
-                                                    toast.success("Path copied to clipboard")
-                                                }}>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => void copyText(config.storage.database)}>
                                                     <Copy className="h-3 w-3" />
                                                 </Button>
                                             </TooltipTrigger>
-                                            <TooltipContent>Copy Path</TooltipContent>
+                                            <TooltipContent>{t('common.copy')}</TooltipContent>
                                         </Tooltip>
                                     </div>
                                     <p className="text-[10px] text-muted-foreground/40 font-medium uppercase">{t('settings.database_path_hint')}</p>
                                 </div>
                             )}
 
-                            <Separator className="bg-border/20" />
-
-                            {/* 保活配置 */}
-                            <div className="space-y-6">
-                                <div
-                                    className={cn(
-                                        "flex items-center justify-between p-5 rounded-2xl border transition-all cursor-pointer group shadow-sm",
-                                        keepAliveEnabled
-                                            ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
-                                            : "bg-muted/30 border-border/40 hover:bg-muted/50"
-                                    )}
-                                    onClick={() => setKeepAliveEnabled(!keepAliveEnabled)}
-                                >
-                                    <div className="flex items-start gap-4">
-                                        <div className={cn(
-                                            "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors",
-                                            keepAliveEnabled
-                                                ? "bg-primary/10 border-primary/20 text-primary"
-                                                : "bg-muted border-border/40 text-muted-foreground"
-                                        )}>
-                                            <HeartPulse className="h-5 w-5" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <Label className="text-sm font-black uppercase tracking-wide cursor-pointer text-foreground/90 group-hover:text-primary transition-colors">
-                                                    {t('settings.keep_alive')}
-                                                </Label>
-                                                {keepAliveEnabled && (
-                                                    <Badge variant="secondary" className="text-[9px] font-bold bg-primary/10 text-primary h-4 px-1.5 border-none">
-                                                        ACTIVE
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic max-w-md">
-                                                {t('settings.keep_alive_hint')}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div
-                                        className={cn(
-                                            "relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 border",
-                                            keepAliveEnabled ? "bg-primary border-primary/20" : "bg-muted border-border/40"
-                                        )}
-                                    >
-                                        <input type="checkbox" className="sr-only" checked={keepAliveEnabled} readOnly />
-                                        <span
-                                            className={cn(
-                                                "pointer-events-none block h-6 w-6 rounded-full bg-background shadow-lg ring-0 transition-transform flex items-center justify-center",
-                                                keepAliveEnabled ? "translate-x-5" : "translate-x-0"
-                                            )}
-                                        >
-                                            {keepAliveEnabled ? (
-                                                <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                            ) : (
-                                                <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
-                                            )}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {keepAliveEnabled && (
-                                    <div className="space-y-6 pl-2 border-l-2 border-primary/20 ml-5">
-                                        <div className="space-y-3 pl-4">
-                                            <Label htmlFor="keep-alive-url" className="text-xs font-black uppercase tracking-wider">{t('settings.keep_alive_url')}</Label>
-                                            <Input
-                                                id="keep-alive-url"
-                                                value={keepAliveURL}
-                                                onChange={e => setKeepAliveURL(e.target.value)}
-                                                placeholder={keepAliveResolvedURL || 'https://your-app.onrender.com/api/health'}
-                                                className="h-10 bg-background/50 border-border/50 font-mono text-xs"
-                                            />
-                                            <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.keep_alive_url_hint')}</p>
-                                            {!keepAliveURL && keepAliveResolvedURL && (
-                                                <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                                                    <Globe className="h-3.5 w-3.5 text-primary shrink-0" />
-                                                    <p className="text-[10px] text-primary/80 leading-relaxed font-bold">
-                                                        {t('settings.keep_alive_auto_detected')}: <code className="bg-primary/10 px-1.5 py-0.5 rounded font-mono">{keepAliveResolvedURL}</code>
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="space-y-3 pl-4 max-w-xs">
-                                            <div className="flex justify-between items-center">
-                                                <Label htmlFor="keep-alive-interval" className="text-xs font-black uppercase tracking-wider">{t('settings.keep_alive_interval')}</Label>
-                                                <Badge variant="secondary" className="font-mono text-[10px] font-bold">{keepAliveInterval}s</Badge>
-                                            </div>
-                                            <Input
-                                                id="keep-alive-interval"
-                                                type="number"
-                                                value={keepAliveInterval}
-                                                onChange={e => setKeepAliveInterval(Number(e.target.value))}
-                                                className="h-10 bg-background/50 border-border/50 font-bold"
-                                                min="60"
-                                                step="60"
-                                            />
-                                            <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.keep_alive_interval_hint')}</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
                         </CardContent>
                         <CardFooter className="py-5 border-t border-border/20 bg-muted/10 justify-end">
                             <Button
