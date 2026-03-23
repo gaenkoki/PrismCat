@@ -19,8 +19,8 @@ server:
   proxy_domains:
     - "localhost"
 
-  # 可选：开启路径路由兼容模式
-  # 开启后也可通过 /_proxy/openai/v1 这样的地址转发，无需子域名解析
+  # 在 UI Host 上启用路径路由
+  # 例如: http://localhost:8080/_proxy/openai/v1/chat/completions
   enable_path_routing: false
   path_routing_prefix: "/_proxy"
 

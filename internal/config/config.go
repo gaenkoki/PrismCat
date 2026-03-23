@@ -42,6 +42,7 @@ type ServerConfig struct {
 	// EnablePathRouting allows routing requests through a reserved path prefix
 	// on the UI host, e.g. /_proxy/openai/v1/chat/completions.
 	EnablePathRouting bool `yaml:"enable_path_routing"`
+
 	// PathRoutingPrefix controls the reserved path prefix used when
 	// EnablePathRouting is on.
 	PathRoutingPrefix string `yaml:"path_routing_prefix"`
@@ -103,6 +104,7 @@ type StorageConfig struct {
 	AsyncBuffer int `yaml:"async_buffer"`
 }
 
+
 var (
 	cfg  *Config
 	once sync.Once
@@ -120,6 +122,7 @@ func Load(path string) (*Config, error) {
 			Port:                   8080,
 			UIHosts:                []string{"localhost", "127.0.0.1"},
 			ProxyDomains:           []string{"localhost"},
+			EnablePathRouting:      false,
 			PathRoutingPrefix:      "/_proxy",
 			ShutdownTimeoutSeconds: 10,
 			CORSAllowOrigins:       []string{"*"},
@@ -165,11 +168,13 @@ func Load(path string) (*Config, error) {
 	if envProxyDomains := os.Getenv("PRISMCAT_PROXY_DOMAINS"); envProxyDomains != "" {
 		c.Server.ProxyDomains = splitCSV(envProxyDomains)
 	}
+
 	if envEnablePathRouting := os.Getenv("PRISMCAT_ENABLE_PATH_ROUTING"); envEnablePathRouting != "" {
 		if enabled, err := strconv.ParseBool(envEnablePathRouting); err == nil {
 			c.Server.EnablePathRouting = enabled
 		}
 	}
+
 	if envPathRoutingPrefix := os.Getenv("PRISMCAT_PATH_ROUTING_PREFIX"); envPathRoutingPrefix != "" {
 		c.Server.PathRoutingPrefix = envPathRoutingPrefix
 	}
@@ -193,6 +198,7 @@ func Load(path string) (*Config, error) {
 		c.Server.UIPassword = envPassword
 	}
 
+	// Normalize case/spacing for host/path matching.
 	c.Server = normalizeServerConfig(c.Server)
 
 	normalizedUpstreams, err := normalizeUpstreams(c.Upstreams)
@@ -257,11 +263,11 @@ func normalizeLowerList(in []string) []string {
 	return out
 }
 
-func normalizeServerConfig(in ServerConfig) ServerConfig {
-	in.UIHosts = normalizeLowerList(in.UIHosts)
-	in.ProxyDomains = normalizeLowerList(in.ProxyDomains)
-	in.PathRoutingPrefix = NormalizePathRoutingPrefix(in.PathRoutingPrefix)
-	return in
+func normalizeServerConfig(cfg ServerConfig) ServerConfig {
+	cfg.UIHosts = normalizeLowerList(cfg.UIHosts)
+	cfg.ProxyDomains = normalizeLowerList(cfg.ProxyDomains)
+	cfg.PathRoutingPrefix = NormalizePathRoutingPrefix(cfg.PathRoutingPrefix)
+	return cfg
 }
 
 func NormalizePathRoutingPrefix(prefix string) string {
@@ -269,14 +275,54 @@ func NormalizePathRoutingPrefix(prefix string) string {
 	if prefix == "" {
 		return "/_proxy"
 	}
-	if !strings.HasPrefix(prefix, "/") {
-		prefix = "/" + prefix
-	}
-	prefix = strings.TrimRight(prefix, "/")
-	if prefix == "" || prefix == "/" {
+
+	prefix = strings.ReplaceAll(prefix, "\\", "/")
+	prefix = strings.Trim(prefix, "/")
+	if prefix == "" {
 		return "/_proxy"
 	}
-	return prefix
+
+	return "/" + prefix
+}
+
+func ExtractPathUpstream(path, prefix string) (string, string, bool) {
+	prefix = NormalizePathRoutingPrefix(prefix)
+	if path == "" {
+		path = "/"
+	}
+
+	if path != prefix && !strings.HasPrefix(path, prefix+"/") {
+		return "", "", false
+	}
+
+	rest := strings.TrimPrefix(path, prefix)
+	rest = strings.TrimPrefix(rest, "/")
+	if rest == "" {
+		return "", "", false
+	}
+
+	upstream := rest
+	forwardPath := "/"
+	if idx := strings.IndexByte(rest, '/'); idx >= 0 {
+		upstream = rest[:idx]
+		forwardPath = rest[idx:]
+	}
+
+	upstream = normalizeLower(upstream)
+	if upstream == "" || strings.Contains(upstream, ".") {
+		return "", "", false
+	}
+
+	if forwardPath == "" {
+		forwardPath = "/"
+	}
+
+	return upstream, forwardPath, true
+}
+
+func IsPathRoutingRequest(path, prefix string) bool {
+	_, _, ok := ExtractPathUpstream(path, prefix)
+	return ok
 }
 
 func normalizeUpstreams(in map[string]UpstreamConfig) (map[string]UpstreamConfig, error) {
@@ -324,6 +370,7 @@ func (c *Config) StorageSnapshot() StorageConfig {
 	defer c.mu.RUnlock()
 	return c.Storage
 }
+
 
 // ServerSnapshot returns a copy of the current server config safe for use
 // without holding locks.
@@ -493,39 +540,3 @@ func ExtractSubdomain(host string, proxyDomains []string) string {
 	return ""
 }
 
-func ExtractPathUpstream(path, prefix string) (string, string, bool) {
-	prefix = NormalizePathRoutingPrefix(prefix)
-	if path == "" {
-		path = "/"
-	}
-	if path != prefix && !strings.HasPrefix(path, prefix+"/") {
-		return "", "", false
-	}
-
-	rest := strings.TrimPrefix(path, prefix)
-	rest = strings.TrimPrefix(rest, "/")
-	if rest == "" {
-		return "", "", false
-	}
-
-	upstream := rest
-	forwardPath := "/"
-	if idx := strings.IndexByte(rest, '/'); idx >= 0 {
-		upstream = rest[:idx]
-		forwardPath = rest[idx:]
-	}
-
-	upstream = normalizeLower(upstream)
-	if upstream == "" || strings.Contains(upstream, ".") {
-		return "", "", false
-	}
-	if forwardPath == "" {
-		forwardPath = "/"
-	}
-	return upstream, forwardPath, true
-}
-
-func IsPathRoutingRequest(path, prefix string) bool {
-	_, _, ok := ExtractPathUpstream(path, prefix)
-	return ok
-}

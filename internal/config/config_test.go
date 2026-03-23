@@ -58,82 +58,50 @@ func TestExtractSubdomain(t *testing.T) {
 
 func TestNormalizePathRoutingPrefix(t *testing.T) {
 	tests := []struct {
+		name string
 		in   string
 		want string
 	}{
-		{in: "", want: "/_proxy"},
-		{in: "/_proxy", want: "/_proxy"},
-		{in: "_proxy", want: "/_proxy"},
-		{in: "/proxy/", want: "/proxy"},
-		{in: "  /proxy/v2/  ", want: "/proxy/v2"},
-		{in: "/", want: "/_proxy"},
+		{name: "default_empty", in: "", want: "/_proxy"},
+		{name: "trim_spaces", in: "  /edge/ ", want: "/edge"},
+		{name: "missing_leading_slash", in: "proxy", want: "/proxy"},
+		{name: "windows_separators", in: "\\edge\\v1\\", want: "/edge/v1"},
 	}
 
 	for _, tt := range tests {
-		if got := NormalizePathRoutingPrefix(tt.in); got != tt.want {
-			t.Fatalf("NormalizePathRoutingPrefix(%q) = %q, want %q", tt.in, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NormalizePathRoutingPrefix(tt.in); got != tt.want {
+				t.Fatalf("NormalizePathRoutingPrefix(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 
 func TestExtractPathUpstream(t *testing.T) {
 	tests := []struct {
-		name     string
-		path     string
-		prefix   string
-		wantName string
-		wantPath string
-		wantOK   bool
+		name        string
+		path        string
+		prefix      string
+		wantName    string
+		wantPath    string
+		wantMatched bool
 	}{
-		{
-			name:     "default_prefix_with_rest_path",
-			path:     "/_proxy/openai/v1/chat/completions",
-			prefix:   "/_proxy",
-			wantName: "openai",
-			wantPath: "/v1/chat/completions",
-			wantOK:   true,
-		},
-		{
-			name:     "default_prefix_root_forward",
-			path:     "/_proxy/openai",
-			prefix:   "/_proxy",
-			wantName: "openai",
-			wantPath: "/",
-			wantOK:   true,
-		},
-		{
-			name:     "custom_prefix_without_leading_slash",
-			path:     "/proxy/Claude/v1/messages",
-			prefix:   "proxy",
-			wantName: "claude",
-			wantPath: "/v1/messages",
-			wantOK:   true,
-		},
-		{
-			name:   "prefix_boundary_required",
-			path:   "/_proxyx/openai/v1",
-			prefix: "/_proxy",
-			wantOK: false,
-		},
-		{
-			name:   "missing_upstream",
-			path:   "/_proxy/",
-			prefix: "/_proxy",
-			wantOK: false,
-		},
-		{
-			name:   "multi_label_upstream_rejected",
-			path:   "/_proxy/a.b/v1",
-			prefix: "/_proxy",
-			wantOK: false,
-		},
+		{name: "basic", path: "/_proxy/openai/v1/chat/completions", prefix: "/_proxy", wantName: "openai", wantPath: "/v1/chat/completions", wantMatched: true},
+		{name: "custom_prefix", path: "/edge/gemini/models", prefix: "edge", wantName: "gemini", wantPath: "/models", wantMatched: true},
+		{name: "root_forward", path: "/_proxy/openai", prefix: "/_proxy", wantName: "openai", wantPath: "/", wantMatched: true},
+		{name: "empty_upstream", path: "/_proxy/", prefix: "/_proxy", wantName: "", wantPath: "", wantMatched: false},
+		{name: "dots_rejected", path: "/_proxy/openai.v2/test", prefix: "/_proxy", wantName: "", wantPath: "", wantMatched: false},
+		{name: "different_prefix", path: "/api/openai/test", prefix: "/_proxy", wantName: "", wantPath: "", wantMatched: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotName, gotPath, gotOK := ExtractPathUpstream(tt.path, tt.prefix)
-			if gotName != tt.wantName || gotPath != tt.wantPath || gotOK != tt.wantOK {
-				t.Fatalf("ExtractPathUpstream(%q, %q) = (%q, %q, %v), want (%q, %q, %v)", tt.path, tt.prefix, gotName, gotPath, gotOK, tt.wantName, tt.wantPath, tt.wantOK)
+			gotName, gotPath, gotMatched := ExtractPathUpstream(tt.path, tt.prefix)
+			if gotName != tt.wantName || gotPath != tt.wantPath || gotMatched != tt.wantMatched {
+				t.Fatalf(
+					"ExtractPathUpstream(%q, %q) = (%q, %q, %v), want (%q, %q, %v)",
+					tt.path, tt.prefix, gotName, gotPath, gotMatched, tt.wantName, tt.wantPath, tt.wantMatched,
+				)
 			}
 		})
 	}

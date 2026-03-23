@@ -247,12 +247,12 @@ func (s *Server) Start() error {
 			return
 		}
 
+		// Routing: UI Host (Control Panel + API) vs Proxy Host
 		if s.cfg.IsUIHost(r.Host) && currentServerCfg.EnablePathRouting && config.IsPathRoutingRequest(r.URL.Path, currentServerCfg.PathRoutingPrefix) {
 			s.proxy.ServeHTTP(w, r)
 			return
 		}
 
-		// Routing: UI Host (Control Panel + API) vs Proxy Host
 		if s.cfg.IsUIHost(r.Host) {
 			authMiddleware(mux).ServeHTTP(w, r)
 		} else {

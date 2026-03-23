@@ -71,15 +71,15 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	loggingCfg := p.cfg.LoggingSnapshot()
 	var logMu sync.Mutex
 
-	upstreamName, requestURL := p.resolveRoute(r, serverCfg)
-	if upstreamName == "" {
-		http.Error(w, "invalid proxy route: missing upstream", http.StatusBadRequest)
+	subdomain, routedURL := p.resolveRoute(r, serverCfg)
+	if subdomain == "" {
+		http.Error(w, "invalid host: missing subdomain", http.StatusBadRequest)
 		return
 	}
 
-	upstream, ok := p.cfg.GetUpstream(upstreamName)
+	upstream, ok := p.cfg.GetUpstream(subdomain)
 	if !ok {
-		http.Error(w, fmt.Sprintf("unknown upstream: %s", upstreamName), http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf("unknown upstream: %s", subdomain), http.StatusBadGateway)
 		return
 	}
 
@@ -89,16 +89,16 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstreamURL := buildUpstreamURL(targetURL, requestURL)
+	upstreamURL := buildUpstreamURL(targetURL, routedURL)
 
 	// Initial log entry (best-effort). This allows the UI to show in-flight requests.
 	logEntry := &storage.RequestLog{
 		ID:        uuid.NewString(),
 		CreatedAt: startTime,
-		Upstream:  upstreamName,
+		Upstream:  subdomain,
 		Method:    r.Method,
-		Path:      requestURL.Path,
-		Query:     requestURL.RawQuery,
+		Path:      r.URL.Path,
+		Query:     r.URL.RawQuery,
 		TargetURL: upstreamURL.String(),
 		Tag:       r.Header.Get("X-PrismCat-Tag"),
 
@@ -193,19 +193,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	p.finalizeAndSaveLog(logEntry, startTime, reqCapture, respCapture, loggingCfg)
 	logMu.Unlock()
-}
-
-func (p *Proxy) resolveRoute(r *http.Request, serverCfg config.ServerConfig) (string, *url.URL) {
-	if serverCfg.EnablePathRouting && p.cfg.IsUIHost(r.Host) {
-		if upstream, forwardPath, ok := config.ExtractPathUpstream(r.URL.Path, serverCfg.PathRoutingPrefix); ok {
-			requestURL := *r.URL
-			requestURL.Path = forwardPath
-			requestURL.RawPath = ""
-			return upstream, &requestURL
-		}
-	}
-
-	return config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains), r.URL
 }
 
 func (p *Proxy) finalizeAndSaveLog(log *storage.RequestLog, startTime time.Time, reqCap, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
@@ -673,4 +660,15 @@ func isProbablyText(contentType string) bool {
 		return true
 	}
 	return false
+}
+func (p *Proxy) resolveRoute(r *http.Request, serverCfg config.ServerConfig) (string, *url.URL) {
+	if serverCfg.EnablePathRouting && p.cfg.IsUIHost(r.Host) {
+		if upstream, rewrittenPath, ok := config.ExtractPathUpstream(r.URL.Path, serverCfg.PathRoutingPrefix); ok {
+			rewrittenURL := *r.URL
+			rewrittenURL.Path = rewrittenPath
+			return upstream, &rewrittenURL
+		}
+	}
+
+	return config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains), r.URL
 }

@@ -258,9 +258,9 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		h.jsonResponse(w, map[string]interface{}{
 			"version": config.Version,
 			"server": map[string]interface{}{
-				"proxy_domains":       serverCfg.ProxyDomains,
-				"enable_path_routing": serverCfg.EnablePathRouting,
-				"path_routing_prefix": serverCfg.PathRoutingPrefix,
+			"proxy_domains": serverCfg.ProxyDomains,
+			"enable_path_routing": serverCfg.EnablePathRouting,
+			"path_routing_prefix": serverCfg.PathRoutingPrefix,
 			},
 			"logging": map[string]interface{}{
 				"max_request_body":            logging.MaxRequestBody,
@@ -347,6 +347,7 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 					c.Storage.RetentionDays = *req.Storage.RetentionDays
 				}
 			}
+
 		})
 
 		// 保存配置

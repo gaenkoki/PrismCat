@@ -31,6 +31,10 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+function getErrorMessage(error: unknown, fallback: string) {
+    return error instanceof Error ? error.message : fallback
+}
+
 export function Settings() {
     const { t } = useTranslation()
     const [upstreams, setUpstreams] = useState<Upstream[]>([])
@@ -40,14 +44,14 @@ export function Settings() {
 
     // 表单状态 - 上游
     const [newName, setNewName] = useState('')
-    const [newTarget, setNewTarget] = useState('')
-    const [newTimeout, setNewTimeout] = useState(30)
+  const [newTarget, setNewTarget] = useState('')
+  const [newTimeout, setNewTimeout] = useState(30)
 
-    // 表单状态 - 路由兼容
-    const [enablePathRouting, setEnablePathRouting] = useState(false)
-    const [pathRoutingPrefix, setPathRoutingPrefix] = useState('/_proxy')
+  // 表单状态 - 路由兼容
+  const [enablePathRouting, setEnablePathRouting] = useState(false)
+  const [pathRoutingPrefix, setPathRoutingPrefix] = useState('/_proxy')
 
-    // 表单状态 - 日志配置
+  // 表单状态 - 日志配置
     const [maxRequestBody, setMaxRequestBody] = useState(1)
     const [maxResponseBody, setMaxResponseBody] = useState(10)
     const [sensitiveHeaders, setSensitiveHeaders] = useState('')
@@ -59,31 +63,37 @@ export function Settings() {
     // 表单状态 - 存储配置
     const [retentionDays, setRetentionDays] = useState(30)
 
+
     // 从 config 中提取域名后缀（如 localhost / prismcat.example.com）
     const domainSuffix = config?.server?.proxy_domains?.[0] || 'localhost'
 
     // 基于浏览器当前访问地址推断代理入口的前缀
-    const proxyBase = useMemo(() => {
-        const proto = window.location.protocol // 'http:' or 'https:'
-        const hostname = window.location.hostname
-        const port = window.location.port
-        const portSuffix = port && port !== '80' && port !== '443' ? `:${port}` : ''
-        return { proto, hostname, portSuffix }
-    }, [])
+  const proxyBase = useMemo(() => {
+  const proto = window.location.protocol // 'http:' or 'https:'
+  const hostname = window.location.hostname
+  const port = window.location.port
+  const portSuffix = port && port !== '80' && port !== '443' ? `:${port}` : ''
+  return { proto, hostname, portSuffix }
+  }, [])
 
-    const getProxyUrl = useCallback((name: string) => {
-        return `${proxyBase.proto}//${name}.${domainSuffix}${proxyBase.portSuffix}`
-    }, [proxyBase, domainSuffix])
+  const getProxyUrl = useCallback((name: string) => {
+  return `${proxyBase.proto}//${name}.${domainSuffix}${proxyBase.portSuffix}`
+  }, [proxyBase, domainSuffix])
 
-    const getPathProxyUrl = useCallback((name: string) => {
-        const trimmedPrefix = pathRoutingPrefix.trim()
-        let normalizedPrefix = trimmedPrefix || '/_proxy'
-        if (!normalizedPrefix.startsWith('/')) {
-            normalizedPrefix = `/${normalizedPrefix}`
-        }
-        normalizedPrefix = normalizedPrefix.replace(/\/+$/, '') || '/_proxy'
-        return `${proxyBase.proto}//${proxyBase.hostname}${proxyBase.portSuffix}${normalizedPrefix}/${name}`
-    }, [pathRoutingPrefix, proxyBase])
+  const getPathProxyUrl = useCallback((name: string) => {
+  const trimmedPrefix = pathRoutingPrefix.trim()
+  let normalizedPrefix = trimmedPrefix || '/_proxy'
+  if (!normalizedPrefix.startsWith('/')) {
+  normalizedPrefix = `/${normalizedPrefix}`
+  }
+  normalizedPrefix = normalizedPrefix.replace(/\/+$/, '') || '/_proxy'
+  return `${proxyBase.proto}//${proxyBase.hostname}${proxyBase.portSuffix}${normalizedPrefix}/${name}`
+  }, [pathRoutingPrefix, proxyBase])
+
+    const copyText = useCallback(async (text: string) => {
+        await navigator.clipboard.writeText(text)
+        toast.success(t('log_detail.copy_success'))
+    }, [t])
 
     const loadData = useCallback(async () => {
         setLoading(true)
@@ -93,7 +103,9 @@ export function Settings() {
                 fetchConfig(),
             ])
             setUpstreams(upstreamsData || [])
-            setConfig(configData)
+  setConfig(configData)
+  setEnablePathRouting(configData.server.enable_path_routing)
+  setPathRoutingPrefix(configData.server.path_routing_prefix || '/_proxy')
 
             // 初始化表单 - 统一使用 KB
             setMaxRequestBody(Math.round(configData.logging.max_request_body / 1024))
@@ -104,8 +116,7 @@ export function Settings() {
             setStoreBase64(configData.logging.store_base64)
             setEarlyRequestBodySnapshot(configData.logging.early_request_body_snapshot)
             setRetentionDays(configData.storage.retention_days)
-            setEnablePathRouting(configData.server.enable_path_routing)
-            setPathRoutingPrefix(configData.server.path_routing_prefix || '/_proxy')
+
         } catch (err) {
             console.error('Failed to load settings:', err)
             toast.error(t('common.error'))
@@ -128,8 +139,8 @@ export function Settings() {
             setNewTimeout(30)
             loadData()
             toast.success(t('settings.upstream_added'))
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         }
     }
 
@@ -140,26 +151,8 @@ export function Settings() {
             await removeUpstream(name)
             loadData()
             toast.success(t('settings.upstream_removed'))
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
-        }
-    }
-
-    const handleSaveRouting = async () => {
-        setSaving(true)
-        try {
-            await updateConfig({
-                server: {
-                    enable_path_routing: enablePathRouting,
-                    path_routing_prefix: pathRoutingPrefix,
-                },
-            })
-            toast.success(t('settings.config_saved'))
-            loadData()
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
-        } finally {
-            setSaving(false)
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         }
     }
 
@@ -180,30 +173,48 @@ export function Settings() {
             })
             toast.success(t('settings.config_saved'))
             loadData()
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, t('common.error')))
         } finally {
             setSaving(false)
         }
     }
 
     // 保存存储配置
-    const handleSaveStorage = async () => {
-        setSaving(true)
-        try {
-            await updateConfig({
-                storage: {
-                    retention_days: retentionDays,
-                },
-            })
-            toast.success(t('settings.config_saved'))
-            loadData()
-        } catch (err: any) {
-            toast.error(err.message || t('common.error'))
-        } finally {
-            setSaving(false)
-        }
-    }
+  const handleSaveStorage = async () => {
+  setSaving(true)
+  try {
+    await updateConfig({
+      storage: {
+        retention_days: retentionDays,
+      },
+    })
+    toast.success(t('settings.config_saved'))
+    loadData()
+  } catch (error: unknown) {
+    toast.error(getErrorMessage(error, t('common.error')))
+  } finally {
+    setSaving(false)
+  }
+  }
+
+  const handleSaveRouting = async () => {
+  setSaving(true)
+  try {
+    await updateConfig({
+      server: {
+        enable_path_routing: enablePathRouting,
+        path_routing_prefix: pathRoutingPrefix,
+      },
+    })
+    toast.success(t('settings.config_saved'))
+    loadData()
+  } catch (error: unknown) {
+    toast.error(getErrorMessage(error, t('common.error')))
+  } finally {
+    setSaving(false)
+  }
+  }
 
     if (loading) {
         return (
@@ -287,88 +298,61 @@ export function Settings() {
                         </form>
                     </div>
 
-                    <Card className="border-border/40 bg-card/30 backdrop-blur-md overflow-hidden">
-                        <CardHeader>
-                            <CardTitle className="text-base font-black tracking-tight uppercase flex items-center gap-2">
-                                <Globe className="h-4 w-4 text-primary" />
-                                {t('settings.path_routing_title')}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-5">
-                            <div
-                                className={cn(
-                                    "flex items-center justify-between p-5 rounded-2xl border transition-all cursor-pointer group shadow-sm",
-                                    enablePathRouting
-                                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
-                                        : "bg-muted/30 border-border/40 hover:bg-muted/50"
-                                )}
-                                onClick={() => setEnablePathRouting(!enablePathRouting)}
-                            >
-                                <div className="flex items-start gap-4">
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors",
-                                        enablePathRouting
-                                            ? "bg-primary/10 border-primary/20 text-primary"
-                                            : "bg-muted border-border/40 text-muted-foreground"
-                                    )}>
-                                        <Globe className="h-5 w-5" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-sm font-black uppercase tracking-wide cursor-pointer text-foreground/90 group-hover:text-primary transition-colors">
-                                            {t('settings.enable_path_routing')}
-                                        </Label>
-                                        <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic max-w-md">
-                                            {t('settings.enable_path_routing_hint')}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div
-                                    className={cn(
-                                        "relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 border",
-                                        enablePathRouting ? "bg-primary border-primary/20" : "bg-muted border-border/40"
-                                    )}
-                                >
-                                    <input type="checkbox" className="sr-only" checked={enablePathRouting} readOnly />
-                                    <span
-                                        className={cn(
-                                            "pointer-events-none block h-6 w-6 rounded-full bg-background shadow-lg ring-0 transition-transform flex items-center justify-center",
-                                            enablePathRouting ? "translate-x-5" : "translate-x-0"
-                                        )}
-                                    >
-                                        <div className={cn("h-1.5 w-1.5 rounded-full", enablePathRouting ? "bg-primary" : "bg-muted-foreground/30")} />
-                                    </span>
-                                </div>
-                            </div>
+  <Card className="border-border/40 bg-card/30 backdrop-blur-md overflow-hidden">
+  <CardHeader>
+  <CardTitle className="text-base font-black tracking-tight uppercase">
+  {t('settings.path_routing_title')}
+  </CardTitle>
+  </CardHeader>
+  <CardContent className="space-y-5">
+  <div className="flex items-center justify-between p-5 rounded-2xl border bg-muted/30 border-border/40">
+  <div className="space-y-1 pr-4">
+  <Label className="text-sm font-black uppercase tracking-wide text-foreground/90">
+  {t('settings.enable_path_routing')}
+  </Label>
+  <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic max-w-md">
+  {t('settings.enable_path_routing_hint')}
+  </p>
+  </div>
+  <input
+  type="checkbox"
+  className="h-4 w-4 shrink-0"
+  checked={enablePathRouting}
+  onChange={e => setEnablePathRouting(e.target.checked)}
+  />
+  </div>
+  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+  <div className="space-y-2">
+  <Label htmlFor="path-routing-prefix" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
+  {t('settings.path_routing_prefix')}
+  </Label>
+  <Input
+  id="path-routing-prefix"
+  value={pathRoutingPrefix}
+  onChange={e => setPathRoutingPrefix(e.target.value)}
+  placeholder="/_proxy"
+  className="h-11 bg-background border-border/50 hover:border-primary/40 focus:border-primary transition-all font-mono text-sm rounded-xl"
+  />
+  <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
+  {t('settings.path_routing_prefix_hint')}
+  </p>
+  <p className="text-[10px] text-muted-foreground/60 break-all font-mono">
+  {getPathProxyUrl('openai')}/v1/chat/completions
+  </p>
+  </div>
+  <Button
+  onClick={handleSaveRouting}
+  disabled={saving}
+  className="h-11 px-6 font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
+  >
+  <Save className="w-4 h-4 mr-2" />
+  {t('common.save')}
+  </Button>
+  </div>
+  </CardContent>
+  </Card>
 
-                            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                                <div className="space-y-2">
-                                    <Label htmlFor="path-routing-prefix" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
-                                        {t('settings.path_routing_prefix')}
-                                    </Label>
-                                    <Input
-                                        id="path-routing-prefix"
-                                        value={pathRoutingPrefix}
-                                        onChange={e => setPathRoutingPrefix(e.target.value)}
-                                        placeholder="/_proxy"
-                                        className="h-11 bg-background border-border/50 hover:border-primary/40 focus:border-primary transition-all font-mono text-sm rounded-xl"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
-                                        {t('settings.path_routing_prefix_hint')}
-                                    </p>
-                                </div>
-                                <Button
-                                    onClick={handleSaveRouting}
-                                    disabled={saving}
-                                    className="h-11 px-6 font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
-                                >
-                                    <Save className="w-4 h-4 mr-2" />
-                                    {t('common.save')}
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <div className="grid gap-3">
+  <div className="grid gap-3">
                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1 mb-1">
                             {t('settings.tabs.upstreams')} ({upstreams.length})
                         </Label>
@@ -395,10 +379,7 @@ export function Settings() {
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <button
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(getProxyUrl(u.name))
-                                                            toast.success(t('log_detail.copy_success'))
-                                                        }}
+                                                        onClick={() => void copyText(getProxyUrl(u.name))}
                                                         className="flex items-center gap-1.5 text-xs font-mono text-primary/60 hover:text-primary transition-colors cursor-pointer text-left"
                                                     >
                                                         <span className="truncate underline decoration-primary/10 underline-offset-4 font-bold">{getProxyUrl(u.name)}</span>
@@ -407,23 +388,6 @@ export function Settings() {
                                                 </TooltipTrigger>
                                                 <TooltipContent>{t('settings.copy_proxy_url')}</TooltipContent>
                                             </Tooltip>
-                                            {enablePathRouting && (
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <button
-                                                            onClick={() => {
-                                                                navigator.clipboard.writeText(getPathProxyUrl(u.name))
-                                                                toast.success(t('log_detail.copy_success'))
-                                                            }}
-                                                            className="flex items-center gap-1.5 text-xs font-mono text-emerald-600/80 hover:text-emerald-500 transition-colors cursor-pointer text-left"
-                                                        >
-                                                            <span className="truncate underline decoration-emerald-500/10 underline-offset-4 font-bold">{getPathProxyUrl(u.name)}</span>
-                                                            <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                        </button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>{t('settings.copy_path_proxy_url')}</TooltipContent>
-                                                </Tooltip>
-                                            )}
                                         </div>
                                     </div>
 
@@ -436,10 +400,21 @@ export function Settings() {
 
                                     <div className="flex-1 min-w-0 sm:max-w-[30%] space-y-1">
                                         <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">{t('upstream_manager.target')}</div>
-                                        <div className="text-[11px] text-foreground/60 font-mono truncate bg-muted/20 px-0.5 py-0.5 rounded-md flex items-center" title={u.target}>
-                                            <Globe className="h-3 w-3 mr-2 text-muted-foreground/20" />
-                                            {u.target}
-                                        </div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void copyText(u.target)}
+                                                    className="w-full text-[11px] text-foreground/60 font-mono truncate bg-muted/20 px-2 py-1 rounded-md flex items-center gap-2 hover:bg-muted/40 hover:text-foreground transition-colors text-left"
+                                                    title={u.target}
+                                                >
+                                                    <Globe className="h-3 w-3 shrink-0 text-muted-foreground/20" />
+                                                    <span className="min-w-0 flex-1 truncate">{u.target}</span>
+                                                    <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>{t('common.copy')}</TooltipContent>
+                                        </Tooltip>
                                     </div>
 
                                     <div className="flex items-center justify-between sm:justify-end gap-4 mt-2 sm:mt-0">
@@ -717,19 +692,17 @@ export function Settings() {
                                         <code className="flex-1 text-[10px] font-mono break-all text-muted-foreground group-hover:text-foreground transition-colors">{config.storage.database}</code>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => {
-                                                    navigator.clipboard.writeText(config.storage.database)
-                                                    toast.success("Path copied to clipboard")
-                                                }}>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => void copyText(config.storage.database)}>
                                                     <Copy className="h-3 w-3" />
                                                 </Button>
                                             </TooltipTrigger>
-                                            <TooltipContent>Copy Path</TooltipContent>
+                                            <TooltipContent>{t('common.copy')}</TooltipContent>
                                         </Tooltip>
                                     </div>
                                     <p className="text-[10px] text-muted-foreground/40 font-medium uppercase">{t('settings.database_path_hint')}</p>
                                 </div>
                             )}
+
                         </CardContent>
                         <CardFooter className="py-5 border-t border-border/20 bg-muted/10 justify-end">
                             <Button

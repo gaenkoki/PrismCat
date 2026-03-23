@@ -23,6 +23,17 @@ interface LogDetailProps {
     onClose: () => void
 }
 
+function formatCopyPayload(value: unknown): string {
+    if (typeof value !== 'string') return value == null ? '' : JSON.stringify(value, null, 2)
+    const trimmed = value.trim()
+    if (!trimmed) return value
+    try {
+        return JSON.stringify(JSON.parse(trimmed), null, 2)
+    } catch {
+        return value
+    }
+}
+
 export function LogDetail({ log, loading, onClose }: LogDetailProps) {
     const { t, i18n } = useTranslation()
     const navigate = useNavigate()
@@ -76,6 +87,19 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
         return mergeStreamBody(effectiveResponseBody)
     }, [log?.streaming, effectiveResponseBody])
 
+    const requestBodyCopyText = useMemo(
+        () => formatCopyPayload(parsedRequestBody ?? effectiveRequestBody),
+        [parsedRequestBody, effectiveRequestBody]
+    )
+
+    const responseBodyCopyText = useMemo(
+        () => formatCopyPayload(
+            streamMerged && mergedResponse
+                ? mergedResponse.merged
+                : (parsedResponseBody ?? effectiveResponseBody)
+        ),
+        [streamMerged, mergedResponse, parsedResponseBody, effectiveResponseBody]
+    )
 
     const copyToClipboard = async (text: string, field: string) => {
         await navigator.clipboard.writeText(text)
@@ -94,8 +118,8 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
             const body = await fetchBlob(ref)
             if (kind === 'request') setFullRequestBody(body)
             else setFullResponseBody(body)
-        } catch (err: any) {
-            setBlobError(err?.message || 'Failed to load blob')
+        } catch (error: unknown) {
+            setBlobError(error instanceof Error ? error.message : 'Failed to load blob')
         } finally {
             setBlobLoading(prev => ({ ...prev, [kind]: false }))
         }
@@ -130,7 +154,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
     }: {
         title: string
         section: keyof typeof expandedSections
-        icon: any
+        icon: React.ComponentType<{ className?: string }>
         extra?: React.ReactNode
     }) => (
         <button
@@ -159,7 +183,16 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
 
     return (
         <Sheet open={!!log} onOpenChange={(open) => !open && onClose()}>
-            <SheetContent className="sm:max-w-2xl w-full p-0 flex flex-col border-l border-border/40 sm:rounded-l-2xl shadow-2xl backdrop-blur-xl bg-white dark:bg-card/95">
+            <SheetContent
+                className="!max-w-none p-0 flex flex-col border-l border-border/40 sm:rounded-l-2xl shadow-2xl backdrop-blur-xl bg-white dark:bg-card/95"
+                style={{
+                    width: 'min(960px, calc(100vw - 12px))',
+                    minWidth: 'min(640px, calc(100vw - 24px))',
+                    maxWidth: 'calc(100vw - 12px)',
+                    resize: 'horizontal',
+                    overflow: 'hidden',
+                }}
+            >
                 {/* 头部固定区域 */}
                 <SheetHeader className="px-6 py-5 border-b border-border/40 bg-muted/20">
                     <div className="flex items-center gap-3">
@@ -322,6 +355,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                                 {t('log_detail.truncated_tag', 'TRUNCATED')}
                                             </Badge>
                                         )}
+                                        <CopyButton text={requestBodyCopyText} field="requestBody" />
                                     </div>
                                 }
                             />
@@ -381,9 +415,6 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                                 {effectiveRequestBody ? (
                                                     <div className="p-4 rounded-lg bg-slate-50 dark:bg-background/50 border border-border/40 overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar relative group">
                                                         <JsonViewer data={parsedRequestBody ?? effectiveRequestBody} />
-                                                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                                            <CopyButton text={effectiveRequestBody} field="requestBody" />
-                                                        </div>
                                                     </div>
                                                 ) : (
                                                     <div className="text-[11px] text-muted-foreground/40 italic p-4 border border-dashed border-border/30 rounded-xl text-center">
@@ -447,6 +478,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                                 {t('log_detail.truncated_tag', 'TRUNCATED')}
                                             </Badge>
                                         )}
+                                        <CopyButton text={responseBodyCopyText} field="responseBody" />
                                     </div>
                                 }
                             />
@@ -547,16 +579,6 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                                         ? mergedResponse.merged
                                                         : (parsedResponseBody ?? effectiveResponseBody)
                                                 } />
-                                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                                    <CopyButton
-                                                        text={
-                                                            streamMerged && mergedResponse
-                                                                ? JSON.stringify(mergedResponse.merged, null, 2)
-                                                                : effectiveResponseBody
-                                                        }
-                                                        field="responseBody"
-                                                    />
-                                                </div>
                                             </div>
                                         ) : (
                                             <div className="text-[11px] text-muted-foreground/40 italic p-4 border border-dashed border-border/30 rounded-xl text-center">
