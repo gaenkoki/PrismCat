@@ -120,11 +120,13 @@ export async function removeUpstream(name: string): Promise<void> {
 
 // 应用配置类型
 export interface AppConfig {
-    version: string
-    server: {
-        proxy_domains: string[]
-    }
-    logging: {
+  version: string
+  server: {
+    proxy_domains: string[]
+    enable_path_routing: boolean
+    path_routing_prefix: string
+  }
+  logging: {
         max_request_body: number
         max_response_body: number
         sensitive_headers: string[]
@@ -140,9 +142,13 @@ export interface AppConfig {
 }
 
 export interface ConfigUpdate {
-    logging?: {
-        max_request_body?: number
-        max_response_body?: number
+  server?: {
+    enable_path_routing?: boolean
+    path_routing_prefix?: string
+  }
+  logging?: {
+    max_request_body?: number
+    max_response_body?: number
         sensitive_headers?: string[]
         early_request_body_snapshot?: boolean
         detach_body_over_bytes?: number

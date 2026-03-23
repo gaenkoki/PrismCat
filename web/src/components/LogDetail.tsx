@@ -18,22 +18,9 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 
 interface LogDetailProps {
-  log: RequestLog | null
-  loading?: boolean
-  onClose: () => void
-}
-
-function formatCopyPayload(value: unknown): string {
-  if (typeof value !== 'string') return value == null ? '' : JSON.stringify(value, null, 2)
-
-  const trimmed = value.trim()
-  if (!trimmed) return value
-
-  try {
-    return JSON.stringify(JSON.parse(trimmed), null, 2)
-  } catch {
-    return value
-  }
+    log: RequestLog | null
+    loading?: boolean
+    onClose: () => void
 }
 
 function formatCopyPayload(value: unknown): string {
@@ -114,33 +101,11 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
         [streamMerged, mergedResponse, parsedResponseBody, effectiveResponseBody]
     )
 
-  const requestBodyCopyText = useMemo(
-    () => formatCopyPayload(parsedRequestBody ?? effectiveRequestBody),
-    [parsedRequestBody, effectiveRequestBody]
-  )
-
-  const responseBodyCopyText = useMemo(
-    () =>
-      formatCopyPayload(
-        streamMerged && mergedResponse
-          ? mergedResponse.merged
-          : (parsedResponseBody ?? effectiveResponseBody)
-      ),
-    [streamMerged, mergedResponse, parsedResponseBody, effectiveResponseBody]
-  )
-
-  const copyToClipboard = async (text: string, field: string) => {
-    const normalizedText =
-      field === 'requestBody'
-        ? requestBodyCopyText
-        : field === 'responseBody'
-          ? responseBodyCopyText
-          : text
-
-    await navigator.clipboard.writeText(normalizedText)
-    setCopiedField(field)
-    setTimeout(() => setCopiedField(null), 2000)
-  }
+    const copyToClipboard = async (text: string, field: string) => {
+        await navigator.clipboard.writeText(text)
+        setCopiedField(field)
+        setTimeout(() => setCopiedField(null), 2000)
+    }
 
     const toggleSection = (section: keyof typeof expandedSections) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))

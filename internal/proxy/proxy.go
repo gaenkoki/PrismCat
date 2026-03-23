@@ -71,8 +71,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	loggingCfg := p.cfg.LoggingSnapshot()
 	var logMu sync.Mutex
 
-	// Extract upstream name from host (e.g. openai.localhost -> openai).
-	subdomain := config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains)
+	subdomain, routedURL := p.resolveRoute(r, serverCfg)
 	if subdomain == "" {
 		http.Error(w, "invalid host: missing subdomain", http.StatusBadRequest)
 		return
@@ -90,7 +89,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstreamURL := buildUpstreamURL(targetURL, r.URL)
+	upstreamURL := buildUpstreamURL(targetURL, routedURL)
 
 	// Initial log entry (best-effort). This allows the UI to show in-flight requests.
 	logEntry := &storage.RequestLog{
@@ -661,4 +660,15 @@ func isProbablyText(contentType string) bool {
 		return true
 	}
 	return false
+}
+func (p *Proxy) resolveRoute(r *http.Request, serverCfg config.ServerConfig) (string, *url.URL) {
+	if serverCfg.EnablePathRouting && p.cfg.IsUIHost(r.Host) {
+		if upstream, rewrittenPath, ok := config.ExtractPathUpstream(r.URL.Path, serverCfg.PathRoutingPrefix); ok {
+			rewrittenURL := *r.URL
+			rewrittenURL.Path = rewrittenPath
+			return upstream, &rewrittenURL
+		}
+	}
+
+	return config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains), r.URL
 }

@@ -221,6 +221,7 @@ func (s *Server) Start() error {
 	// authMiddleware handles password protection for UI and API
 	authMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			serverCfg := s.cfg.ServerSnapshot()
 			if serverCfg.UIPassword != "" {
 				_, pass, ok := r.BasicAuth()
 				if !ok || pass != serverCfg.UIPassword {
@@ -238,7 +239,8 @@ func (s *Server) Start() error {
 		activeRequests.Add(1)
 		defer activeRequests.Add(-1)
 
-		applyCORS(w, r, serverCfg)
+		currentServerCfg := s.cfg.ServerSnapshot()
+		applyCORS(w, r, currentServerCfg)
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -246,6 +248,11 @@ func (s *Server) Start() error {
 		}
 
 		// Routing: UI Host (Control Panel + API) vs Proxy Host
+		if s.cfg.IsUIHost(r.Host) && currentServerCfg.EnablePathRouting && config.IsPathRoutingRequest(r.URL.Path, currentServerCfg.PathRoutingPrefix) {
+			s.proxy.ServeHTTP(w, r)
+			return
+		}
+
 		if s.cfg.IsUIHost(r.Host) {
 			authMiddleware(mux).ServeHTTP(w, r)
 		} else {

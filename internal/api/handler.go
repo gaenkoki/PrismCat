@@ -258,7 +258,9 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		h.jsonResponse(w, map[string]interface{}{
 			"version": config.Version,
 			"server": map[string]interface{}{
-				"proxy_domains": serverCfg.ProxyDomains,
+			"proxy_domains": serverCfg.ProxyDomains,
+			"enable_path_routing": serverCfg.EnablePathRouting,
+			"path_routing_prefix": serverCfg.PathRoutingPrefix,
 			},
 			"logging": map[string]interface{}{
 				"max_request_body":            logging.MaxRequestBody,
@@ -282,6 +284,10 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 	// PUT: 更新配置
 	if r.Method == http.MethodPut {
 		var req struct {
+			Server *struct {
+				EnablePathRouting *bool   `json:"enable_path_routing"`
+				PathRoutingPrefix *string `json:"path_routing_prefix"`
+			} `json:"server"`
 			Logging *struct {
 				MaxRequestBody   *int64    `json:"max_request_body"`
 				MaxResponseBody  *int64    `json:"max_response_body"`
@@ -303,6 +309,15 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 
 		// 更新日志配置
 		h.cfg.Update(func(c *config.Config) {
+			if req.Server != nil {
+				if req.Server.EnablePathRouting != nil {
+					c.Server.EnablePathRouting = *req.Server.EnablePathRouting
+				}
+				if req.Server.PathRoutingPrefix != nil {
+					c.Server.PathRoutingPrefix = config.NormalizePathRoutingPrefix(*req.Server.PathRoutingPrefix)
+				}
+			}
+
 			if req.Logging != nil {
 				if req.Logging.MaxRequestBody != nil {
 					c.Logging.MaxRequestBody = *req.Logging.MaxRequestBody
