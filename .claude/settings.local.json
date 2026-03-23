@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__mcp-router__list_dir"
+    ]
+  },
+  "outputStyle": "nekomata-little-sister"
+}
