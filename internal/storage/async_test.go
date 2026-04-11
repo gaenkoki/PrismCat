@@ -30,6 +30,8 @@ func (m *memRepo) GetLog(id string) (*RequestLog, error) { return nil, errors.Ne
 func (m *memRepo) ListLogs(filter LogFilter) ([]*RequestLog, int64, error) {
 	return nil, 0, errors.New("not implemented")
 }
+func (m *memRepo) DeleteLog(id string) error                   { return nil }
+func (m *memRepo) DeleteLogs(ids []string) (int64, error)      { return int64(len(ids)), nil }
 func (m *memRepo) DeleteLogsBefore(before time.Time) (int64, error) { return 0, nil }
 func (m *memRepo) GetStats(since *time.Time) (*LogStats, error)     { return &LogStats{}, nil }
 func (m *memRepo) Close() error                                     { m.mu.Lock(); m.closed = true; m.mu.Unlock(); return nil }

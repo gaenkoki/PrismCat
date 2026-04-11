@@ -441,6 +441,64 @@ func (r *SQLiteRepository) ListLogs(filter LogFilter) ([]*RequestLog, int64, err
 	return logs, total, nil
 }
 
+func (r *SQLiteRepository) DeleteLog(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return sql.ErrNoRows
+	}
+
+	result, err := r.db.Exec("DELETE FROM request_logs WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (r *SQLiteRepository) DeleteLogs(ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	seen := make(map[string]struct{}, len(ids))
+	filtered := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		filtered = append(filtered, id)
+	}
+
+	if len(filtered) == 0 {
+		return 0, nil
+	}
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(filtered)), ",")
+	args := make([]interface{}, 0, len(filtered))
+	for _, id := range filtered {
+		args = append(args, id)
+	}
+
+	result, err := r.db.Exec("DELETE FROM request_logs WHERE id IN ("+placeholders+")", args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (r *SQLiteRepository) DeleteLogsBefore(before time.Time) (int64, error) {
 	result, err := r.db.Exec("DELETE FROM request_logs WHERE created_at_unix_ms < ?", before.UTC().UnixMilli())
 	if err != nil {

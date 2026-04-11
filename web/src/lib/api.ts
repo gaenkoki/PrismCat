@@ -81,6 +81,33 @@ export async function fetchLog(id: string): Promise<RequestLog> {
     return response.json()
 }
 
+export async function deleteLog(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/logs/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+    })
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: '请求失败' }))
+        throw new Error(error.error || '删除日志失败')
+    }
+}
+
+export async function deleteLogs(ids: string[]): Promise<number> {
+    const response = await fetch(`${API_BASE}/logs`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids }),
+    })
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: '请求失败' }))
+        throw new Error(error.error || '批量删除日志失败')
+    }
+
+    const data = await response.json().catch(() => ({ deleted: ids.length }))
+    return Number(data.deleted || 0)
+}
+
 export async function fetchStats(since?: string): Promise<LogStats> {
     const params = since ? `?since=${since}` : ''
     const response = await fetch(`${API_BASE}/stats${params}`)

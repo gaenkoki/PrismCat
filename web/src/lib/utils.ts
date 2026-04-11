@@ -40,6 +40,22 @@ export function formatSize(bytes: number): string {
 }
 
 // 状态码颜色
+export function formatStructuredText(text: string): { formatted: string; kind: 'json' | null } {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return { formatted: text, kind: null }
+  }
+
+  try {
+    return {
+      formatted: JSON.stringify(JSON.parse(trimmed), null, 2),
+      kind: 'json',
+    }
+  } catch {
+    return { formatted: text, kind: null }
+  }
+}
+
 export function getStatusColor(code: number): string {
   if (code >= 200 && code < 300) return 'text-green-400'
   if (code >= 300 && code < 400) return 'text-yellow-400'

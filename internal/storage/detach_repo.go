@@ -117,6 +117,14 @@ func (r *DetachingRepository) ListLogs(filter LogFilter) ([]*RequestLog, int64, 
 	return r.inner.ListLogs(filter)
 }
 
+func (r *DetachingRepository) DeleteLog(id string) error {
+	return r.inner.DeleteLog(id)
+}
+
+func (r *DetachingRepository) DeleteLogs(ids []string) (int64, error) {
+	return r.inner.DeleteLogs(ids)
+}
+
 func (r *DetachingRepository) DeleteLogsBefore(beforeTime time.Time) (int64, error) {
 	return r.inner.DeleteLogsBefore(beforeTime)
 }

@@ -108,6 +108,14 @@ func (a *AsyncRepository) ListLogs(filter LogFilter) ([]*RequestLog, int64, erro
 	return a.inner.ListLogs(filter)
 }
 
+func (a *AsyncRepository) DeleteLog(id string) error {
+	return a.inner.DeleteLog(id)
+}
+
+func (a *AsyncRepository) DeleteLogs(ids []string) (int64, error) {
+	return a.inner.DeleteLogs(ids)
+}
+
 func (a *AsyncRepository) DeleteLogsBefore(beforeTime time.Time) (int64, error) {
 	return a.inner.DeleteLogsBefore(beforeTime)
 }

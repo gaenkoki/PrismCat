@@ -1,6 +1,7 @@
 import { cn, formatDate, formatLatency, getMethodColor, getStatusColor } from '@/lib/utils'
-import { ChevronRight, Clock3, Server, Tag as TagIcon, Zap } from 'lucide-react'
+import { ChevronRight, Clock3, Server, Tag as TagIcon, Trash2, Zap } from 'lucide-react'
 import type { RequestLog } from '@/lib/api'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     Table,
@@ -22,7 +23,43 @@ interface LogTableProps {
     logs: RequestLog[]
     loading?: boolean
     onSelect: (log: RequestLog) => void
+    onDelete: (log: RequestLog) => void
     selectedId?: string
+    selectedIds: string[]
+    onToggleSelect: (logId: string, checked: boolean) => void
+    onToggleSelectAll: (checked: boolean) => void
+    deletingIds?: string[]
+}
+
+function SelectionCheckbox({
+    checked,
+    indeterminate = false,
+    onCheckedChange,
+    ariaLabel,
+}: {
+    checked: boolean
+    indeterminate?: boolean
+    onCheckedChange: (checked: boolean) => void
+    ariaLabel: string
+}) {
+    const ref = useRef<HTMLInputElement | null>(null)
+
+    useEffect(() => {
+        if (ref.current) {
+            ref.current.indeterminate = indeterminate
+        }
+    }, [indeterminate])
+
+    return (
+        <input
+            ref={ref}
+            type="checkbox"
+            checked={checked}
+            aria-label={ariaLabel}
+            onChange={(e) => onCheckedChange(e.target.checked)}
+            className="h-4 w-4 rounded border border-border bg-background align-middle accent-primary"
+        />
+    )
 }
 
 function getStatusBadgeColor(code: number): string {
@@ -49,6 +86,10 @@ function MobileLogSkeleton() {
                         <Skeleton className="h-5 w-20 rounded-full bg-muted/50" />
                         <Skeleton className="h-5 w-16 rounded-full bg-muted/50" />
                     </div>
+                    <div className="flex gap-2">
+                        <Skeleton className="h-8 w-20 rounded-md bg-muted/50" />
+                        <Skeleton className="h-8 w-24 rounded-md bg-muted/50" />
+                    </div>
                 </div>
             ))}
         </div>
@@ -61,19 +102,22 @@ function DesktopLogSkeleton({ t }: { t: (key: string) => string }) {
             <Table>
                 <TableHeader className="bg-muted/50">
                     <TableRow>
+                        <TableHead className="w-[44px]">
+                            <Skeleton className="h-4 w-4 rounded-sm bg-muted/50" />
+                        </TableHead>
                         <TableHead className="w-[80px]">{t('log_table.method')}</TableHead>
                         <TableHead className="w-[70px]">{t('log_table.status')}</TableHead>
                         <TableHead className="w-[100px]">{t('log_table.upstream')}</TableHead>
                         <TableHead>{t('log_table.path')}</TableHead>
                         <TableHead className="w-[80px] text-right">{t('log_table.latency')}</TableHead>
                         <TableHead className="w-[160px] text-right">{t('log_table.time')}</TableHead>
-                        <TableHead className="w-[100px]"></TableHead>
+                        <TableHead className="w-[168px]"></TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {Array.from({ length: 8 }).map((_, rowIndex) => (
                         <TableRow key={rowIndex}>
-                            {Array.from({ length: 7 }).map((_, cellIndex) => (
+                            {Array.from({ length: 8 }).map((_, cellIndex) => (
                                 <TableCell key={cellIndex}>
                                     <Skeleton className="h-5 w-full bg-muted/50" />
                                 </TableCell>
@@ -176,8 +220,23 @@ function MobileLogCard({
     )
 }
 
-export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps) {
+export function LogTable({
+    logs,
+    loading,
+    onSelect,
+    onDelete,
+    selectedId,
+    selectedIds,
+    onToggleSelect,
+    onToggleSelectAll,
+    deletingIds = [],
+}: LogTableProps) {
     const { t, i18n } = useTranslation()
+    const selectedIdSet = new Set(selectedIds)
+    const deletingIdSet = new Set(deletingIds)
+    const selectedCountOnPage = logs.filter((log) => selectedIdSet.has(log.id)).length
+    const allSelectedOnPage = logs.length > 0 && selectedCountOnPage === logs.length
+    const partiallySelected = selectedCountOnPage > 0 && selectedCountOnPage < logs.length
 
     if (loading) {
         return (
@@ -221,13 +280,21 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                 <Table>
                     <TableHeader className="bg-muted/30">
                         <TableRow className="hover:bg-transparent">
+                            <TableHead className="w-[44px]">
+                                <SelectionCheckbox
+                                    checked={allSelectedOnPage}
+                                    indeterminate={partiallySelected}
+                                    onCheckedChange={onToggleSelectAll}
+                                    ariaLabel={t('log_table.select_all', { defaultValue: '全选当前页' })}
+                                />
+                            </TableHead>
                             <TableHead className="w-[80px] font-bold text-[11px] uppercase tracking-tighter">{t('log_table.method')}</TableHead>
                             <TableHead className="w-[70px] font-bold text-[11px] uppercase tracking-tighter text-center">{t('log_table.status')}</TableHead>
                             <TableHead className="w-[100px] font-bold text-[11px] uppercase tracking-tighter">{t('log_table.upstream')}</TableHead>
                             <TableHead className="font-bold text-[11px] uppercase tracking-tighter">{t('log_table.path')}</TableHead>
                             <TableHead className="w-[100px] font-bold text-[11px] uppercase tracking-tighter text-right">{t('log_table.latency')}</TableHead>
                             <TableHead className="w-[180px] font-bold text-[11px] uppercase tracking-tighter text-right">{t('log_table.time')}</TableHead>
-                            <TableHead className="w-[100px]"></TableHead>
+                            <TableHead className="w-[168px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -236,9 +303,21 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                                 key={log.id}
                                 className={cn(
                                     'transition-colors border-b',
-                                    selectedId === log.id ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/40'
+                                    selectedId === log.id || selectedIdSet.has(log.id)
+                                        ? 'bg-primary/10 hover:bg-primary/15'
+                                        : 'hover:bg-muted/40'
                                 )}
                             >
+                                <TableCell>
+                                    <SelectionCheckbox
+                                        checked={selectedIdSet.has(log.id)}
+                                        onCheckedChange={(checked) => onToggleSelect(log.id, checked)}
+                                        ariaLabel={t('log_table.select_row', {
+                                            defaultValue: '选中日志 {{id}}',
+                                            id: log.id,
+                                        })}
+                                    />
+                                </TableCell>
                                 <TableCell>
                                     <div
                                         className={cn(
@@ -308,19 +387,31 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex justify-end transition-opacity">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className={cn(
-                                                'h-7 text-[11px] font-black px-6 min-w-[80px] rounded-md transition-all active:scale-95',
-                                                selectedId === log.id
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : 'text-muted-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground'
-                                            )}
-                                            onClick={() => onSelect(log)}
-                                        >
-                                            {t('common.details')}
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 rounded-md border-destructive/20 px-3 text-[11px] font-black text-destructive hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                                onClick={() => onDelete(log)}
+                                                disabled={deletingIdSet.has(log.id)}
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                                {t('common.delete')}
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className={cn(
+                                                    'h-7 text-[11px] font-black px-4 min-w-[80px] rounded-md transition-all active:scale-95',
+                                                    selectedId === log.id
+                                                        ? 'bg-primary text-primary-foreground'
+                                                        : 'text-muted-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground'
+                                                )}
+                                                onClick={() => onSelect(log)}
+                                            >
+                                                {t('common.details')}
+                                            </Button>
+                                        </div>
                                     </div>
                                 </TableCell>
                             </TableRow>

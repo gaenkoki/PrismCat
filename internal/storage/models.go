@@ -69,6 +69,8 @@ type Repository interface {
 	SaveLog(log *RequestLog) error
 	GetLog(id string) (*RequestLog, error)
 	ListLogs(filter LogFilter) ([]*RequestLog, int64, error) // 返回日志列表和总数
+	DeleteLog(id string) error
+	DeleteLogs(ids []string) (int64, error)
 	DeleteLogsBefore(before time.Time) (int64, error)        // 返回删除数量
 
 	// 统计

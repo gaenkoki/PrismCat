@@ -64,7 +64,14 @@
         "latency": "Latency",
         "no_logs": "No logs found",
         "send_requests_hint": "Logs will appear here after you send some requests",
-        "tag": "Tag"
+        "tag": "Tag",
+        "confirm_delete_single": "Delete this log entry?\n{{path}}",
+        "confirm_delete_selected": "Delete {{count}} selected log entries?",
+        "delete_success": "Log deleted",
+        "bulk_delete_success": "Deleted {{count}} log entries",
+        "delete_selected": "Delete Selected ({{count}})",
+        "select_all": "Select all on this page",
+        "select_row": "Select log {{id}}"
     },
     "log_detail": {
         "title": "Request Details",

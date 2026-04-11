@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net"
@@ -65,6 +66,33 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 // handleLogs 获取日志列表
 func (h *Handler) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		var req struct {
+			IDs []string `json:"ids"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			h.jsonError(w, "无效的请求体", http.StatusBadRequest)
+			return
+		}
+		if len(req.IDs) == 0 {
+			h.jsonError(w, "缺少日志 ID", http.StatusBadRequest)
+			return
+		}
+
+		deleted, err := h.repo.DeleteLogs(req.IDs)
+		if err != nil {
+			h.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		h.jsonResponse(w, map[string]interface{}{
+			"status":  "ok",
+			"deleted": deleted,
+		})
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		h.jsonError(w, "方法不允许", http.StatusMethodNotAllowed)
 		return
@@ -124,15 +152,29 @@ func (h *Handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 // handleLogDetail 获取日志详情
 func (h *Handler) handleLogDetail(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		h.jsonError(w, "方法不允许", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// 从路径中提取 ID: /api/logs/{id}
 	id := r.URL.Path[len("/api/logs/"):]
 	if id == "" {
 		h.jsonError(w, "缺少日志 ID", http.StatusBadRequest)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		if err := h.repo.DeleteLog(id); err != nil {
+			if err == sql.ErrNoRows {
+				h.jsonError(w, "日志不存在", http.StatusNotFound)
+				return
+			}
+			h.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		h.jsonResponse(w, map[string]string{"status": "ok"})
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		h.jsonError(w, "方法不允许", http.StatusMethodNotAllowed)
 		return
 	}
 

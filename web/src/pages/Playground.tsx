@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { Send, Plus, Trash2, Loader2, Copy, Check, ChevronDown } from 'lucide-react'
-import { cn, getStatusColor, formatSize, generateId } from '@/lib/utils'
+import { toast } from 'sonner'
+import { cn, getStatusColor, formatSize, formatStructuredText, generateId } from '@/lib/utils'
 import { fetchUpstreams, sendReplay } from '@/lib/api'
 import type { Upstream, ReplayResponse } from '@/lib/api'
 import { JsonViewer } from '@/components/JsonViewer'
@@ -76,7 +77,9 @@ export function Playground() {
             if (r.upstream) setUpstream(r.upstream)
             if (r.method) setMethod(r.method)
             if (r.path) setPath(r.path)
-            if (r.body) setBody(r.body)
+            if (typeof r.body === 'string') {
+                setBody(formatStructuredText(r.body).formatted)
+            }
             if (r.headers && typeof r.headers === 'object') {
                 const entries: HeaderEntry[] = Object.entries(r.headers as Record<string, string | string[]>)
                     .filter(([k]) => {
@@ -122,6 +125,19 @@ export function Playground() {
         setCopiedField(field)
         setTimeout(() => setCopiedField(null), 2000)
     }
+
+    const handleFormatBody = useCallback(() => {
+        if (!body.trim()) return
+
+        const result = formatStructuredText(body)
+        if (result.kind !== 'json') {
+            toast.error(t('playground.body_format_failed', { defaultValue: '当前请求体不是有效 JSON，无法格式化' }))
+            return
+        }
+
+        setBody(result.formatted)
+        toast.success(t('playground.body_formatted', { defaultValue: '请求体已格式化' }))
+    }, [body, t])
 
     const handleSend = useCallback(async () => {
         if (!upstream || !method) return
@@ -339,11 +355,26 @@ export function Playground() {
                 {/* Tab Content: Body */}
                 {activeTab === 'body' && (
                     <div className="pt-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                                {t('playground.body_resize_hint', { defaultValue: '拖拽文本框底边可上下调节高度' })}
+                            </span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleFormatBody}
+                                disabled={!body.trim()}
+                                className="h-8 rounded-lg px-3 text-[11px] font-bold"
+                            >
+                                {t('playground.format_body', { defaultValue: '格式化' })}
+                            </Button>
+                        </div>
                         <textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
                             placeholder='{ "model": "gpt-4", "messages": [...] }'
-                            className="w-full h-[240px] px-4 py-3 rounded-xl bg-background border border-input text-xs font-mono leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none custom-scrollbar transition-all shadow-sm"
+                            className="custom-scrollbar w-full min-h-[240px] resize-y overflow-auto rounded-xl border border-input bg-background px-4 py-3 text-xs font-mono leading-relaxed placeholder:text-muted-foreground/40 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20"
                             spellCheck={false}
                         />
                     </div>

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Search, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Upstream, LogFilter } from '@/lib/api'
-import { Suspense, lazy, useState, useEffect } from 'react'
+import { Suspense, lazy, useState, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ interface LogFiltersProps {
     upstreams: Upstream[]
     total: number
     loading?: boolean
+    selectionActions?: ReactNode
 }
 
 const DEFAULT_FILTER: LogFilter = { limit: 20, offset: 0 }
@@ -51,6 +52,7 @@ export function LogFilters({
     upstreams,
     total,
     loading,
+    selectionActions,
 }: LogFiltersProps) {
     const { t } = useTranslation()
 
@@ -263,31 +265,41 @@ export function LogFilters({
                 </div>
 
                 <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-md border border-border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
-                        onClick={() => goToPage(currentPage - 1)}
-                        disabled={currentPage <= 1}
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
+                    {selectionActions ? (
+                        <div className="flex items-center gap-2">
+                            {selectionActions}
+                        </div>
+                    ) : (
+                        <div />
+                    )}
 
-                    <div className="flex items-center h-8 px-4 rounded-md border border-border shadow-sm bg-background font-mono text-xs font-bold text-foreground/80">
-                        <span className="text-primary">{currentPage}</span>
-                        <span className="mx-2 text-muted-foreground/30">/</span>
-                        <span>{totalPages || 1}</span>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 rounded-md border border-border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage <= 1}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+
+                        <div className="flex items-center h-8 px-4 rounded-md border border-border shadow-sm bg-background font-mono text-xs font-bold text-foreground/80">
+                            <span className="text-primary">{currentPage}</span>
+                            <span className="mx-2 text-muted-foreground/30">/</span>
+                            <span>{totalPages || 1}</span>
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 rounded-md border border-border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage >= totalPages}
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
                     </div>
-
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-md border border-border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
-                        onClick={() => goToPage(currentPage + 1)}
-                        disabled={currentPage >= totalPages}
-                    >
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
                 </div>
             </div>
         </div>

@@ -1,9 +1,12 @@
 import { Suspense, lazy, startTransition, useEffect, useState, useCallback, useRef } from 'react'
-import { fetchLogs, fetchLog, fetchStats, fetchUpstreams } from '@/lib/api'
+import { Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { deleteLog, deleteLogs, fetchLogs, fetchLog, fetchStats, fetchUpstreams } from '@/lib/api'
 import type { RequestLog, LogStats, Upstream, LogFilter, LogListResponse } from '@/lib/api'
 import { StatsCards } from '@/components/StatsCards'
 import { LogTable } from '@/components/LogTable'
 import { LogFilters } from '@/components/LogFilters'
+import { Button } from '@/components/ui/button'
 import { useTranslation } from 'react-i18next'
 
 const LogDetailPanel = lazy(async () => {
@@ -23,6 +26,8 @@ export function Dashboard() {
     const [selectedLog, setSelectedLog] = useState<RequestLog | null>(null)
     const [selectedLogLoading, setSelectedLogLoading] = useState(false)
     const [filter, setFilter] = useState<LogFilter>({ limit: 20, offset: 0 })
+    const [selectedLogIds, setSelectedLogIds] = useState<string[]>([])
+    const [deletingIds, setDeletingIds] = useState<string[]>([])
     const selectSeq = useRef(0)
 
     // 加载日志
@@ -70,6 +75,11 @@ export function Dashboard() {
         loadLogs()
     }, [loadLogs])
 
+    useEffect(() => {
+        const visibleIds = new Set(logs.map((log) => log.id))
+        setSelectedLogIds((prev) => prev.filter((id) => visibleIds.has(id)))
+    }, [logs])
+
     const handleSelectLog = useCallback(async (log: RequestLog) => {
         setSelectedLog(log)
         setSelectedLogLoading(true)
@@ -95,6 +105,97 @@ export function Dashboard() {
         setSelectedLog(null)
         setSelectedLogLoading(false)
     }, [])
+
+    const refreshLogsAndStats = useCallback(async () => {
+        await Promise.all([loadLogs(), loadStats()])
+    }, [loadLogs, loadStats])
+
+    const syncAfterDelete = useCallback(async (removedIds: string[], deletedCount: number) => {
+        const removedIdSet = new Set(removedIds)
+        setSelectedLogIds((prev) => prev.filter((id) => !removedIdSet.has(id)))
+
+        if (selectedLog && removedIdSet.has(selectedLog.id)) {
+            handleCloseLog()
+        }
+
+        const pageSize = filter.limit || 20
+        const currentOffset = filter.offset || 0
+        const nextTotal = Math.max(total - deletedCount, 0)
+        const lastValidOffset = nextTotal > 0
+            ? Math.floor((nextTotal - 1) / pageSize) * pageSize
+            : 0
+
+        if (currentOffset > lastValidOffset) {
+            startTransition(() => {
+                setFilter((prev) => ({ ...prev, offset: lastValidOffset }))
+            })
+            await loadStats()
+            return
+        }
+
+        await refreshLogsAndStats()
+    }, [filter.limit, filter.offset, handleCloseLog, loadStats, refreshLogsAndStats, selectedLog, total])
+
+    const handleToggleSelect = useCallback((logId: string, checked: boolean) => {
+        setSelectedLogIds((prev) => {
+            if (checked) {
+                return prev.includes(logId) ? prev : [...prev, logId]
+            }
+            return prev.filter((id) => id !== logId)
+        })
+    }, [])
+
+    const handleToggleSelectAll = useCallback((checked: boolean) => {
+        setSelectedLogIds(checked ? logs.map((log) => log.id) : [])
+    }, [logs])
+
+    const handleDeleteLog = useCallback(async (log: RequestLog) => {
+        if (!confirm(t('log_table.confirm_delete_single', {
+            defaultValue: '确认删除这条日志？\n{{path}}',
+            path: log.path,
+        }))) {
+            return
+        }
+
+        setDeletingIds((prev) => Array.from(new Set([...prev, log.id])))
+        try {
+            await deleteLog(log.id)
+            await syncAfterDelete([log.id], 1)
+            toast.success(t('log_table.delete_success', { defaultValue: '日志已删除' }))
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : t('common.error'))
+        } finally {
+            setDeletingIds((prev) => prev.filter((id) => id !== log.id))
+        }
+    }, [syncAfterDelete, t])
+
+    const handleDeleteSelected = useCallback(async () => {
+        if (selectedLogIds.length === 0) {
+            return
+        }
+        if (!confirm(t('log_table.confirm_delete_selected', {
+            defaultValue: '确认删除已选中的 {{count}} 条日志？',
+            count: selectedLogIds.length,
+        }))) {
+            return
+        }
+
+        const ids = [...selectedLogIds]
+        setDeletingIds((prev) => Array.from(new Set([...prev, ...ids])))
+        try {
+            const deleted = await deleteLogs(ids)
+            const deletedCount = deleted || ids.length
+            await syncAfterDelete(ids, deletedCount)
+            toast.success(t('log_table.bulk_delete_success', {
+                defaultValue: '已删除 {{count}} 条日志',
+                count: deletedCount,
+            }))
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : t('common.error'))
+        } finally {
+            setDeletingIds((prev) => prev.filter((id) => !ids.includes(id)))
+        }
+    }, [selectedLogIds, syncAfterDelete, t])
 
     const logDetailFallback = selectedLog ? (
         <div className="fixed inset-y-0 right-0 z-50 w-full border-l border-border/60 bg-background shadow-2xl sm:max-w-2xl">
@@ -124,6 +225,21 @@ export function Dashboard() {
                         upstreams={upstreams}
                         total={total}
                         loading={loading}
+                        selectionActions={selectedLogIds.length > 0 ? (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDeleteSelected}
+                                disabled={deletingIds.length > 0}
+                                className="h-8 gap-1.5 rounded-md border-destructive/20 px-3 text-[11px] font-black text-destructive hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {t('log_table.delete_selected', {
+                                    defaultValue: '批量删除 ({{count}})',
+                                    count: selectedLogIds.length,
+                                })}
+                            </Button>
+                        ) : undefined}
                     />
                 </div>
 
@@ -133,7 +249,12 @@ export function Dashboard() {
                         logs={logs}
                         loading={loading}
                         onSelect={handleSelectLog}
+                        onDelete={handleDeleteLog}
                         selectedId={selectedLog?.id}
+                        selectedIds={selectedLogIds}
+                        onToggleSelect={handleToggleSelect}
+                        onToggleSelectAll={handleToggleSelectAll}
+                        deletingIds={deletingIds}
                     />
                 </div>
             </section>
