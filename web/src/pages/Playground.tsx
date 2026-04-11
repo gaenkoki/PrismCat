@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { Send, Plus, Trash2, Loader2, Copy, Check, ChevronDown } from 'lucide-react'
-import { cn, getStatusColor, formatSize, generateId } from '@/lib/utils'
+import { toast } from 'sonner'
+import { cn, getStatusColor, formatSize, formatStructuredText, generateId } from '@/lib/utils'
 import { fetchUpstreams, sendReplay } from '@/lib/api'
 import type { Upstream, ReplayResponse } from '@/lib/api'
 import { JsonViewer } from '@/components/JsonViewer'
@@ -76,7 +77,9 @@ export function Playground() {
             if (r.upstream) setUpstream(r.upstream)
             if (r.method) setMethod(r.method)
             if (r.path) setPath(r.path)
-            if (r.body) setBody(r.body)
+            if (typeof r.body === 'string') {
+                setBody(formatStructuredText(r.body).formatted)
+            }
             if (r.headers && typeof r.headers === 'object') {
                 const entries: HeaderEntry[] = Object.entries(r.headers as Record<string, string | string[]>)
                     .filter(([k]) => {
@@ -122,6 +125,19 @@ export function Playground() {
         setCopiedField(field)
         setTimeout(() => setCopiedField(null), 2000)
     }
+
+    const handleFormatBody = useCallback(() => {
+        if (!body.trim()) return
+
+        const result = formatStructuredText(body)
+        if (result.kind !== 'json') {
+            toast.error(t('playground.body_format_failed', { defaultValue: '\u5f53\u524d\u8bf7\u6c42\u4f53\u4e0d\u662f\u6709\u6548 JSON\uff0c\u65e0\u6cd5\u683c\u5f0f\u5316' }))
+            return
+        }
+
+        setBody(result.formatted)
+        toast.success(t('playground.body_formatted', { defaultValue: '\u8bf7\u6c42\u4f53\u5df2\u683c\u5f0f\u5316' }))
+    }, [body, t])
 
     const handleSend = useCallback(async () => {
         if (!upstream || !method) return
@@ -339,11 +355,26 @@ export function Playground() {
                 {/* Tab Content: Body */}
                 {activeTab === 'body' && (
                     <div className="pt-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                                {t('playground.body_resize_hint', { defaultValue: '\u62d6\u62fd\u6587\u672c\u6846\u5e95\u8fb9\u53ef\u4e0a\u4e0b\u8c03\u8282\u9ad8\u5ea6' })}
+                            </span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleFormatBody}
+                                disabled={!body.trim()}
+                                className="h-8 rounded-lg px-3 text-[11px] font-bold"
+                            >
+                                {t('playground.format_body', { defaultValue: '\u683c\u5f0f\u5316' })}
+                            </Button>
+                        </div>
                         <textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
                             placeholder='{ "model": "gpt-4", "messages": [...] }'
-                            className="w-full h-[240px] px-4 py-3 rounded-xl bg-background border border-input text-xs font-mono leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none custom-scrollbar transition-all shadow-sm"
+                            className="prism-resizable custom-scrollbar w-full min-h-[240px] overflow-auto rounded-xl border border-input bg-background px-4 py-3 text-xs font-mono leading-relaxed placeholder:text-muted-foreground/40 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20"
                             spellCheck={false}
                         />
                     </div>

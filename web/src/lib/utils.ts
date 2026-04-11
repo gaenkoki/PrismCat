@@ -100,3 +100,19 @@ export function syntaxHighlightJson(json: string): string {
     return `<span class="${cls}">${escapeHtml(match)}</span>`
   })
 }
+
+export function formatStructuredText(text: string): { formatted: string; kind: 'json' | null } {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return { formatted: text, kind: null }
+  }
+
+  try {
+    return {
+      formatted: JSON.stringify(JSON.parse(trimmed), null, 2),
+      kind: 'json',
+    }
+  } catch {
+    return { formatted: text, kind: null }
+  }
+}
