@@ -264,14 +264,12 @@ export function LogFilters({
                     )}
                 </div>
 
-                <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+                <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:flex-nowrap sm:justify-end">
                     {selectionActions ? (
                         <div className="flex items-center gap-2">
                             {selectionActions}
                         </div>
-                    ) : (
-                        <div />
-                    )}
+                    ) : null}
 
                     <div className="flex items-center gap-3">
                         <Button

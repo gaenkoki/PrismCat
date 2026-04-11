@@ -57,7 +57,7 @@ function SelectionCheckbox({
             checked={checked}
             aria-label={ariaLabel}
             onChange={(e) => onCheckedChange(e.target.checked)}
-            className="h-4 w-4 rounded border border-border bg-background align-middle accent-primary"
+            className="prism-checkbox h-4 w-4 cursor-pointer rounded-[5px] border border-border/70 bg-background/80 align-middle transition-all hover:border-primary/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
     )
 }
@@ -387,11 +387,11 @@ export function LogTable({
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex justify-end transition-opacity">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-background/70 p-1 shadow-xs backdrop-blur-sm">
                                             <Button
-                                                variant="outline"
+                                                variant="ghost"
                                                 size="sm"
-                                                className="h-7 rounded-md border-destructive/20 px-3 text-[11px] font-black text-destructive hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                                className="h-7 rounded-lg px-2.5 text-[11px] font-bold text-muted-foreground/75 hover:bg-destructive/10 hover:text-destructive"
                                                 onClick={() => onDelete(log)}
                                                 disabled={deletingIdSet.has(log.id)}
                                             >
@@ -402,10 +402,10 @@ export function LogTable({
                                                 variant="ghost"
                                                 size="sm"
                                                 className={cn(
-                                                    'h-7 text-[11px] font-black px-4 min-w-[80px] rounded-md transition-all active:scale-95',
+                                                    'h-7 min-w-[80px] rounded-lg px-4 text-[11px] font-black transition-all active:scale-95',
                                                     selectedId === log.id
-                                                        ? 'bg-primary text-primary-foreground'
-                                                        : 'text-muted-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground'
+                                                        ? 'bg-primary text-primary-foreground shadow-sm'
+                                                        : 'text-foreground/75 hover:bg-accent hover:text-foreground'
                                                 )}
                                                 onClick={() => onSelect(log)}
                                             >

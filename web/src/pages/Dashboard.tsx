@@ -231,7 +231,7 @@ export function Dashboard() {
                                 size="sm"
                                 onClick={handleDeleteSelected}
                                 disabled={deletingIds.length > 0}
-                                className="h-8 gap-1.5 rounded-md border-destructive/20 px-3 text-[11px] font-black text-destructive hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                className="h-8 rounded-full border-destructive/20 bg-background/80 px-3.5 text-[11px] font-bold text-destructive/85 shadow-xs backdrop-blur-sm hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                                 {t('log_table.delete_selected', {
