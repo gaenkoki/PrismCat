@@ -1,11 +1,15 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { Suspense, lazy, startTransition, useEffect, useState, useCallback, useRef } from 'react'
 import { fetchLogs, fetchLog, fetchStats, fetchUpstreams } from '@/lib/api'
 import type { RequestLog, LogStats, Upstream, LogFilter, LogListResponse } from '@/lib/api'
 import { StatsCards } from '@/components/StatsCards'
 import { LogTable } from '@/components/LogTable'
-import { LogDetail } from '@/components/LogDetail'
 import { LogFilters } from '@/components/LogFilters'
 import { useTranslation } from 'react-i18next'
+
+const LogDetailPanel = lazy(async () => {
+    const module = await import('@/components/LogDetail')
+    return { default: module.LogDetail }
+})
 
 export function Dashboard() {
     const { t } = useTranslation()
@@ -73,7 +77,9 @@ export function Dashboard() {
         try {
             const full = await fetchLog(log.id)
             if (selectSeq.current === seq) {
-                setSelectedLog(full)
+                startTransition(() => {
+                    setSelectedLog(full)
+                })
             }
         } catch (err) {
             console.error(t('app.load_log_detail_failed') + ':', err)
@@ -90,43 +96,56 @@ export function Dashboard() {
         setSelectedLogLoading(false)
     }, [])
 
+    const logDetailFallback = selectedLog ? (
+        <div className="fixed inset-y-0 right-0 z-50 w-full border-l border-border/60 bg-background shadow-2xl sm:max-w-2xl">
+            <div className="flex h-full flex-col items-center justify-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <div className="text-sm font-medium text-muted-foreground">
+                    {t('common.loading')}
+                </div>
+            </div>
+        </div>
+    ) : null
+
     return (
-        <>
+        <div className="flex flex-col gap-6 md:gap-8">
             {/* 统计卡片 */}
             <section>
                 <StatsCards stats={stats} loading={loading && !stats} />
             </section>
 
-            {/* 日志区域 */}
-            <section className="space-y-4">
+            {/* 日志区域 - 包含过滤器和表格 */}
+            <section className="flex flex-col gap-4">
                 {/* 过滤器 */}
-                <LogFilters
-                    filter={filter}
-                    onSearch={setFilter}
-                    upstreams={upstreams}
-                    total={total}
-                    loading={loading}
-                />
+                <div className="bg-muted/30 rounded-xl p-2 md:p-3">
+                    <LogFilters
+                        filter={filter}
+                        onSearch={setFilter}
+                        upstreams={upstreams}
+                        total={total}
+                        loading={loading}
+                    />
+                </div>
 
                 {/* 日志列表 */}
-                <div className="rounded-xl border border-border bg-card/50 backdrop-blur-sm overflow-hidden">
-                    <div className="p-4">
-                        <LogTable
-                            logs={logs}
-                            loading={loading}
-                            onSelect={handleSelectLog}
-                            selectedId={selectedLog?.id}
-                        />
-                    </div>
+                <div className="rounded-2xl overflow-hidden shadow-sm border border-border bg-card">
+                    <LogTable
+                        logs={logs}
+                        loading={loading}
+                        onSelect={handleSelectLog}
+                        selectedId={selectedLog?.id}
+                    />
                 </div>
             </section>
 
             {/* 日志详情侧边栏 */}
-            <LogDetail
-                log={selectedLog}
-                loading={selectedLogLoading}
-                onClose={handleCloseLog}
-            />
-        </>
+            <Suspense fallback={logDetailFallback}>
+                <LogDetailPanel
+                    log={selectedLog}
+                    loading={selectedLogLoading}
+                    onClose={handleCloseLog}
+                />
+            </Suspense>
+        </div>
     )
 }

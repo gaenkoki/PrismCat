@@ -1,9 +1,6 @@
 package proxy
 
 import (
-	"bytes"
-	"compress/flate"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -13,20 +10,16 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
-	"github.com/andybalholm/brotli"
 	"github.com/google/uuid"
 
 	"github.com/paopaoandlingyia/PrismCat/internal/config"
+	"github.com/paopaoandlingyia/PrismCat/internal/httpbody"
 	"github.com/paopaoandlingyia/PrismCat/internal/storage"
 )
-
-var b64Regex = regexp.MustCompile(`(data:[^\s]+?;base64,)?([A-Za-z0-9+/]{200,}[=]{0,2})`)
 
 // Proxy handles host-based upstream routing and request/response logging.
 type Proxy struct {
@@ -71,15 +64,15 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	loggingCfg := p.cfg.LoggingSnapshot()
 	var logMu sync.Mutex
 
-	subdomain, routedURL := p.resolveRoute(r, serverCfg)
-	if subdomain == "" {
-		http.Error(w, "invalid host: missing subdomain", http.StatusBadRequest)
+	upstreamName, requestURL := p.resolveRoute(r, serverCfg)
+	if upstreamName == "" {
+		http.Error(w, "invalid proxy route: missing upstream", http.StatusBadRequest)
 		return
 	}
 
-	upstream, ok := p.cfg.GetUpstream(subdomain)
+	upstream, ok := p.cfg.GetUpstream(upstreamName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("unknown upstream: %s", subdomain), http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf("unknown upstream: %s", upstreamName), http.StatusBadGateway)
 		return
 	}
 
@@ -89,16 +82,16 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstreamURL := buildUpstreamURL(targetURL, routedURL)
+	upstreamURL := buildUpstreamURL(targetURL, requestURL)
 
 	// Initial log entry (best-effort). This allows the UI to show in-flight requests.
 	logEntry := &storage.RequestLog{
 		ID:        uuid.NewString(),
 		CreatedAt: startTime,
-		Upstream:  subdomain,
+		Upstream:  upstreamName,
 		Method:    r.Method,
-		Path:      r.URL.Path,
-		Query:     r.URL.RawQuery,
+		Path:      requestURL.Path,
+		Query:     requestURL.RawQuery,
 		TargetURL: upstreamURL.String(),
 		Tag:       r.Header.Get("X-PrismCat-Tag"),
 
@@ -195,6 +188,19 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logMu.Unlock()
 }
 
+func (p *Proxy) resolveRoute(r *http.Request, serverCfg config.ServerConfig) (string, *url.URL) {
+	if serverCfg.EnablePathRouting && p.cfg.IsUIHost(r.Host) {
+		if upstream, forwardPath, ok := config.ExtractPathUpstream(r.URL.Path, serverCfg.PathRoutingPrefix); ok {
+			requestURL := *r.URL
+			requestURL.Path = forwardPath
+			requestURL.RawPath = ""
+			return upstream, &requestURL
+		}
+	}
+
+	return config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains), r.URL
+}
+
 func (p *Proxy) finalizeAndSaveLog(log *storage.RequestLog, startTime time.Time, reqCap, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
 	p.applyRequestCapture(log, reqCap, loggingCfg)
 	p.applyResponseCapture(log, respCap, loggingCfg)
@@ -210,9 +216,12 @@ func (p *Proxy) applyRequestCapture(log *storage.RequestLog, reqCap *limitedCapt
 	log.RequestBodySize = reqCap.Total()
 	contentType := firstHeaderValue(log.RequestHeaders, "Content-Type")
 	contentEncoding := firstHeaderValue(log.RequestHeaders, "Content-Encoding")
-	body, truncated := bodyForLog(contentType, contentEncoding, reqCap.Bytes(), loggingCfg.MaxRequestBody, loggingCfg.StoreBase64)
-	log.RequestBody = body
-	log.Truncated = log.Truncated || truncated || reqCap.Truncated()
+	formatted := httpbody.FormatForDisplay(contentType, contentEncoding, reqCap.Bytes(), httpbody.FormatOptions{
+		MaxOutputBytes:  loggingCfg.MaxRequestBody,
+		TrimLargeBase64: !loggingCfg.StoreBase64,
+	})
+	log.RequestBody = formatted.Text
+	log.Truncated = log.Truncated || formatted.Truncated || reqCap.Truncated()
 }
 
 func (p *Proxy) applyResponseCapture(log *storage.RequestLog, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
@@ -221,9 +230,12 @@ func (p *Proxy) applyResponseCapture(log *storage.RequestLog, respCap *limitedCa
 	}
 	contentType := firstHeaderValue(log.ResponseHeaders, "Content-Type")
 	contentEncoding := firstHeaderValue(log.ResponseHeaders, "Content-Encoding")
-	body, truncated := bodyForLog(contentType, contentEncoding, respCap.Bytes(), loggingCfg.MaxResponseBody, loggingCfg.StoreBase64)
-	log.ResponseBody = body
-	log.Truncated = log.Truncated || truncated || respCap.Truncated()
+	formatted := httpbody.FormatForDisplay(contentType, contentEncoding, respCap.Bytes(), httpbody.FormatOptions{
+		MaxOutputBytes:  loggingCfg.MaxResponseBody,
+		TrimLargeBase64: !loggingCfg.StoreBase64,
+	})
+	log.ResponseBody = formatted.Text
+	log.Truncated = log.Truncated || formatted.Truncated || respCap.Truncated()
 }
 
 func firstHeaderValue(headers map[string][]string, key string) string {
@@ -548,127 +560,4 @@ func copyWithOptionalFlush(dst http.ResponseWriter, src io.Reader, capture io.Wr
 			return total, err
 		}
 	}
-}
-
-// bodyForLog converts captured bytes to a UI-friendly string.
-// For compressed payloads, it attempts decompression first.
-// For non-textual payloads, it returns a short placeholder to avoid blowing up the UI.
-func readAllLimited(r io.Reader, max int64) ([]byte, bool, error) {
-	if max <= 0 {
-		// No budget: return empty.
-		return nil, false, nil
-	}
-	// Read up to max+1 so we can detect truncation.
-	data, err := io.ReadAll(io.LimitReader(r, max+1))
-	if err != nil {
-		return nil, false, err
-	}
-	if int64(len(data)) <= max {
-		return data, false, nil
-	}
-	return data[:max], true, nil
-}
-
-func bodyForLog(contentType, contentEncoding string, b []byte, maxOutputBytes int64, storeBase64 bool) (string, bool) {
-	if len(b) == 0 {
-		return "", false
-	}
-
-	data := b
-	decompressed := false
-	truncated := false
-
-	switch strings.ToLower(strings.TrimSpace(contentEncoding)) {
-	case "gzip":
-		if r, err := gzip.NewReader(bytes.NewReader(b)); err == nil {
-			if d, t, err := readAllLimited(r, maxOutputBytes); err == nil {
-				data = d
-				decompressed = true
-				truncated = truncated || t
-			}
-			r.Close()
-		}
-	case "deflate":
-		r := flate.NewReader(bytes.NewReader(b))
-		if d, t, err := readAllLimited(r, maxOutputBytes); err == nil {
-			data = d
-			decompressed = true
-			truncated = truncated || t
-		}
-		r.Close()
-	case "br":
-		r := brotli.NewReader(bytes.NewReader(b))
-		if d, t, err := readAllLimited(r, maxOutputBytes); err == nil {
-			data = d
-			decompressed = true
-			truncated = truncated || t
-		}
-	}
-
-	if isProbablyText(contentType) && utf8.Valid(data) {
-		s := string(data)
-		if !storeBase64 {
-			s = b64Regex.ReplaceAllStringFunc(s, func(m string) string {
-				if len(m) <= 200 {
-					return m
-				}
-				return m[:200]
-			})
-		}
-		return s, truncated
-	}
-	if utf8.Valid(data) {
-		s := string(data)
-		if !storeBase64 {
-			s = b64Regex.ReplaceAllStringFunc(s, func(m string) string {
-				if len(m) <= 200 {
-					return m
-				}
-				return m[:200]
-			})
-		}
-		return s, truncated
-	}
-
-	if decompressed {
-		if truncated {
-			return fmt.Sprintf("[binary content omitted; %d bytes after decompression (truncated)]", len(data)), true
-		}
-		return fmt.Sprintf("[binary content omitted; %d bytes after decompression]", len(data)), false
-	}
-	return fmt.Sprintf("[binary content omitted; %d bytes captured]", len(b)), false
-}
-
-func isProbablyText(contentType string) bool {
-	if contentType == "" {
-		return false
-	}
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		mediaType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
-	}
-	mediaType = strings.ToLower(mediaType)
-	if strings.HasPrefix(mediaType, "text/") {
-		return true
-	}
-	if mediaType == "application/json" ||
-		mediaType == "application/xml" ||
-		mediaType == "application/x-www-form-urlencoded" {
-		return true
-	}
-	if strings.HasSuffix(mediaType, "+json") || strings.HasSuffix(mediaType, "+xml") {
-		return true
-	}
-	return false
-}
-func (p *Proxy) resolveRoute(r *http.Request, serverCfg config.ServerConfig) (string, *url.URL) {
-	if serverCfg.EnablePathRouting && p.cfg.IsUIHost(r.Host) {
-		if upstream, rewrittenPath, ok := config.ExtractPathUpstream(r.URL.Path, serverCfg.PathRoutingPrefix); ok {
-			rewrittenURL := *r.URL
-			rewrittenURL.Path = rewrittenPath
-			return upstream, &rewrittenURL
-		}
-	}
-
-	return config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains), r.URL
 }

@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const Version = "1.2.0"
+const Version = "1.3.1"
 
 // Config 应用配置
 type Config struct {

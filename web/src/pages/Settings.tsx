@@ -1,39 +1,123 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Plus, Trash2, Save, Database, FileText, Upload, AlertCircle, ShieldAlert, HardDrive, Clock, Globe, Copy, ArrowRight, Image as ImageIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { Badge } from "@/components/ui/badge"
+import {
+    useEffect,
+    useState,
+    useCallback,
+    useMemo,
+    useId,
+    type FormEvent,
+    type ReactNode,
+} from 'react'
+import {
+    Plus,
+    Trash2,
+    Save,
+    Upload,
+    Copy,
+    CircleHelp,
+} from 'lucide-react'
 
-import { fetchUpstreams, addUpstream, removeUpstream, fetchConfig, updateConfig } from '@/lib/api'
-import type { Upstream, AppConfig } from '@/lib/api'
-import { useTranslation } from 'react-i18next'
-import { toast } from "sonner"
-import {
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-} from "@/components/ui/tabs"
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-    CardFooter,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Separator } from "@/components/ui/separator"
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from '@/components/ui/tooltip'
+import { fetchUpstreams, addUpstream, removeUpstream, fetchConfig, updateConfig } from '@/lib/api'
+import type { Upstream, AppConfig } from '@/lib/api'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
-function getErrorMessage(error: unknown, fallback: string) {
-    return error instanceof Error ? error.message : fallback
+type FieldBlockProps = {
+    label: string
+    hint?: string
+    htmlFor?: string
+    unit?: string
+    children: ReactNode
 }
+
+type ToggleSettingProps = {
+    label: string
+    description: string
+    checked: boolean
+    onCheckedChange: (checked: boolean) => void
+}
+
+
+function InfoTooltip({ content }: { content: string }) {
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <button
+                    type="button"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/85 transition-colors hover:text-foreground"
+                    aria-label="More info"
+                >
+                    <CircleHelp className="h-3.5 w-3.5" />
+                </button>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={6} className="max-w-xs px-3 py-2 text-[12px] leading-6">
+                {content}
+            </TooltipContent>
+        </Tooltip>
+    )
+}
+
+function FieldBlock({ label, hint, htmlFor, unit, children }: FieldBlockProps) {
+    return (
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+                <Label
+                    htmlFor={htmlFor}
+                    className="cursor-pointer select-none text-sm font-medium text-foreground hover:text-foreground/90 transition-colors"
+                >
+                    {label}
+                </Label>
+                {hint && <InfoTooltip content={hint} />}
+                {unit && (
+                    <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {unit}
+                    </span>
+                )}
+            </div>
+            {children}
+        </div>
+    )
+}
+
+function ToggleSetting({
+    label,
+    description,
+    checked,
+    onCheckedChange,
+}: ToggleSettingProps) {
+    const id = useId()
+    return (
+        <div className="flex items-center gap-3">
+            <Switch
+                id={id}
+                checked={checked}
+                onCheckedChange={onCheckedChange}
+                className="shrink-0 data-[state=unchecked]:bg-border/60"
+            />
+            <div className="flex items-center gap-1.5">
+                <Label
+                    htmlFor={id}
+                    className="cursor-pointer select-none text-sm font-medium text-foreground hover:text-foreground transition-colors"
+                >
+                    {label}
+                </Label>
+                <InfoTooltip content={description} />
+            </div>
+        </div>
+    )
+}
+
 
 export function Settings() {
     const { t } = useTranslation()
@@ -41,17 +125,16 @@ export function Settings() {
     const [config, setConfig] = useState<AppConfig | null>(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [showAddForm, setShowAddForm] = useState(false)
+    const [activeTab, setActiveTab] = useState<'routing' | 'logging'>('routing')
 
-    // 表单状态 - 上游
     const [newName, setNewName] = useState('')
-  const [newTarget, setNewTarget] = useState('')
-  const [newTimeout, setNewTimeout] = useState(30)
+    const [newTarget, setNewTarget] = useState('')
+    const [newTimeout, setNewTimeout] = useState(30)
 
-  // 表单状态 - 路由兼容
-  const [enablePathRouting, setEnablePathRouting] = useState(false)
-  const [pathRoutingPrefix, setPathRoutingPrefix] = useState('/_proxy')
+    const [enablePathRouting, setEnablePathRouting] = useState(false)
+    const [pathRoutingPrefix, setPathRoutingPrefix] = useState('/_proxy')
 
-  // 表单状态 - 日志配置
     const [maxRequestBody, setMaxRequestBody] = useState(1)
     const [maxResponseBody, setMaxResponseBody] = useState(10)
     const [sensitiveHeaders, setSensitiveHeaders] = useState('')
@@ -60,38 +143,35 @@ export function Settings() {
     const [storeBase64, setStoreBase64] = useState(true)
     const [earlyRequestBodySnapshot, setEarlyRequestBodySnapshot] = useState(true)
 
-    // 表单状态 - 存储配置
     const [retentionDays, setRetentionDays] = useState(30)
 
-
-    // 从 config 中提取域名后缀（如 localhost / prismcat.example.com）
     const domainSuffix = config?.server?.proxy_domains?.[0] || 'localhost'
+    const previewUpstreamName = upstreams[0]?.name || 'openai'
 
-    // 基于浏览器当前访问地址推断代理入口的前缀
-  const proxyBase = useMemo(() => {
-  const proto = window.location.protocol // 'http:' or 'https:'
-  const hostname = window.location.hostname
-  const port = window.location.port
-  const portSuffix = port && port !== '80' && port !== '443' ? `:${port}` : ''
-  return { proto, hostname, portSuffix }
-  }, [])
+    const proxyBase = useMemo(() => {
+        const proto = window.location.protocol
+        const hostname = window.location.hostname
+        const port = window.location.port
+        const portSuffix = port && port !== '80' && port !== '443' ? `:${port}` : ''
+        return { proto, hostname, portSuffix }
+    }, [])
 
-  const getProxyUrl = useCallback((name: string) => {
-  return `${proxyBase.proto}//${name}.${domainSuffix}${proxyBase.portSuffix}`
-  }, [proxyBase, domainSuffix])
+    const getProxyUrl = useCallback((name: string) => {
+        return `${proxyBase.proto}//${name}.${domainSuffix}${proxyBase.portSuffix}`
+    }, [proxyBase, domainSuffix])
 
-  const getPathProxyUrl = useCallback((name: string) => {
-  const trimmedPrefix = pathRoutingPrefix.trim()
-  let normalizedPrefix = trimmedPrefix || '/_proxy'
-  if (!normalizedPrefix.startsWith('/')) {
-  normalizedPrefix = `/${normalizedPrefix}`
-  }
-  normalizedPrefix = normalizedPrefix.replace(/\/+$/, '') || '/_proxy'
-  return `${proxyBase.proto}//${proxyBase.hostname}${proxyBase.portSuffix}${normalizedPrefix}/${name}`
-  }, [pathRoutingPrefix, proxyBase])
+    const getPathProxyUrl = useCallback((name: string) => {
+        const trimmedPrefix = pathRoutingPrefix.trim()
+        let normalizedPrefix = trimmedPrefix || '/_proxy'
+        if (!normalizedPrefix.startsWith('/')) {
+            normalizedPrefix = `/${normalizedPrefix}`
+        }
+        normalizedPrefix = normalizedPrefix.replace(/\/+$/, '') || '/_proxy'
+        return `${proxyBase.proto}//${proxyBase.hostname}${proxyBase.portSuffix}${normalizedPrefix}/${name}`
+    }, [pathRoutingPrefix, proxyBase])
 
-    const copyText = useCallback(async (text: string) => {
-        await navigator.clipboard.writeText(text)
+    const handleCopy = useCallback((value: string) => {
+        navigator.clipboard.writeText(value)
         toast.success(t('log_detail.copy_success'))
     }, [t])
 
@@ -103,11 +183,9 @@ export function Settings() {
                 fetchConfig(),
             ])
             setUpstreams(upstreamsData || [])
-  setConfig(configData)
-  setEnablePathRouting(configData.server.enable_path_routing)
-  setPathRoutingPrefix(configData.server.path_routing_prefix || '/_proxy')
+            setConfig(configData)
+            setShowAddForm(prev => prev || !upstreamsData?.length)
 
-            // 初始化表单 - 统一使用 KB
             setMaxRequestBody(Math.round(configData.logging.max_request_body / 1024))
             setMaxResponseBody(Math.round(configData.logging.max_response_body / 1024))
             setSensitiveHeaders(configData.logging.sensitive_headers.join('\n'))
@@ -116,7 +194,8 @@ export function Settings() {
             setStoreBase64(configData.logging.store_base64)
             setEarlyRequestBodySnapshot(configData.logging.early_request_body_snapshot)
             setRetentionDays(configData.storage.retention_days)
-
+            setEnablePathRouting(configData.server.enable_path_routing)
+            setPathRoutingPrefix(configData.server.path_routing_prefix || '/_proxy')
         } catch (err) {
             console.error('Failed to load settings:', err)
             toast.error(t('common.error'))
@@ -129,38 +208,40 @@ export function Settings() {
         loadData()
     }, [loadData])
 
-    // 上游管理
-    const handleAddUpstream = async (e: React.FormEvent) => {
+    const handleAddUpstream = async (e: FormEvent) => {
         e.preventDefault()
         try {
             await addUpstream(newName, newTarget, newTimeout)
             setNewName('')
             setNewTarget('')
             setNewTimeout(30)
+            setShowAddForm(false)
             loadData()
             toast.success(t('settings.upstream_added'))
-        } catch (error: unknown) {
-            toast.error(getErrorMessage(error, t('common.error')))
+        } catch (err: any) {
+            toast.error(err.message || t('common.error'))
         }
     }
 
     const handleRemoveUpstream = async (name: string) => {
-        // 使用简单的 confirm，或者以后可以加一个 Shadcn Dialog
         if (!confirm(t('upstream_manager.confirm_delete', { name }))) return
         try {
             await removeUpstream(name)
             loadData()
             toast.success(t('settings.upstream_removed'))
-        } catch (error: unknown) {
-            toast.error(getErrorMessage(error, t('common.error')))
+        } catch (err: any) {
+            toast.error(err.message || t('common.error'))
         }
     }
 
-    // 保存日志配置
-    const handleSaveLogging = async () => {
+    const handleSaveAll = async () => {
         setSaving(true)
         try {
             await updateConfig({
+                server: {
+                    enable_path_routing: enablePathRouting,
+                    path_routing_prefix: pathRoutingPrefix,
+                },
                 logging: {
                     max_request_body: maxRequestBody * 1024,
                     max_response_body: maxResponseBody * 1024,
@@ -170,57 +251,24 @@ export function Settings() {
                     store_base64: storeBase64,
                     early_request_body_snapshot: earlyRequestBodySnapshot,
                 },
+                storage: {
+                    retention_days: retentionDays,
+                },
             })
             toast.success(t('settings.config_saved'))
             loadData()
-        } catch (error: unknown) {
-            toast.error(getErrorMessage(error, t('common.error')))
+        } catch (err: any) {
+            toast.error(err.message || t('common.error'))
         } finally {
             setSaving(false)
         }
     }
 
-    // 保存存储配置
-  const handleSaveStorage = async () => {
-  setSaving(true)
-  try {
-    await updateConfig({
-      storage: {
-        retention_days: retentionDays,
-      },
-    })
-    toast.success(t('settings.config_saved'))
-    loadData()
-  } catch (error: unknown) {
-    toast.error(getErrorMessage(error, t('common.error')))
-  } finally {
-    setSaving(false)
-  }
-  }
-
-  const handleSaveRouting = async () => {
-  setSaving(true)
-  try {
-    await updateConfig({
-      server: {
-        enable_path_routing: enablePathRouting,
-        path_routing_prefix: pathRoutingPrefix,
-      },
-    })
-    toast.success(t('settings.config_saved'))
-    loadData()
-  } catch (error: unknown) {
-    toast.error(getErrorMessage(error, t('common.error')))
-  } finally {
-    setSaving(false)
-  }
-  }
-
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center h-96 gap-4">
-                <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                <div className="text-sm font-bold uppercase tracking-widest text-muted-foreground animate-pulse">
+            <div className="flex h-96 flex-col items-center justify-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <div className="text-sm font-medium text-muted-foreground">
                     {t('common.loading')}
                 </div>
             </div>
@@ -228,498 +276,416 @@ export function Settings() {
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <Tabs defaultValue="upstreams" className="w-full">
-                <TabsList className="grid w-full max-w-md grid-cols-3 h-12 bg-muted/50 p-1 rounded-xl border border-border/40">
-                    <TabsTrigger value="upstreams" className="rounded-lg font-bold text-xs uppercase tracking-wider data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                        <Upload className="w-3.5 h-3.5 mr-2" />
-                        {t('settings.tabs.upstreams')}
-                    </TabsTrigger>
-                    <TabsTrigger value="logging" className="rounded-lg font-bold text-xs uppercase tracking-wider data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                        <FileText className="w-3.5 h-3.5 mr-2" />
-                        {t('settings.tabs.logging')}
-                    </TabsTrigger>
-                    <TabsTrigger value="storage" className="rounded-lg font-bold text-xs uppercase tracking-wider data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                        <Database className="w-3.5 h-3.5 mr-2" />
-                        {t('settings.tabs.storage')}
-                    </TabsTrigger>
-                </TabsList>
+        <div className="w-full">
 
-                {/* 上游配置 */}
-                <TabsContent value="upstreams" className="mt-6 space-y-8">
-                    <div className="space-y-4 bg-muted/10 p-6 rounded-2xl">
-                        <h3 className="text-sm font-black tracking-widest uppercase text-foreground/60 flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                            {t('upstream_manager.add_new')}
-                        </h3>
-                        <form onSubmit={handleAddUpstream} className="grid sm:grid-cols-12 gap-4 items-end">
-                            <div className="space-y-2 sm:col-span-3">
-                                <Label htmlFor="name" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{t('upstream_manager.name')}</Label>
-                                <div className="relative group">
-                                    <Input
-                                        id="name"
-                                        value={newName}
-                                        onChange={e => setNewName(e.target.value)}
-                                        placeholder="openai"
-                                        className="h-11 bg-background border-border/50 group-hover:border-primary/40 focus:border-primary transition-all pr-12 font-bold rounded-xl"
-                                        required
-                                    />
-                                    <div className="absolute right-3 top-3.5 text-[10px] font-black text-muted-foreground/30 pointer-events-none group-hover:text-primary/30 transition-colors">.{domainSuffix}</div>
-                                </div>
-                            </div>
-                            <div className="space-y-2 sm:col-span-5">
-                                <Label htmlFor="target" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{t('upstream_manager.target')}</Label>
-                                <Input
-                                    id="target"
-                                    value={newTarget}
-                                    onChange={e => setNewTarget(e.target.value)}
-                                    placeholder="https://api.openai.com"
-                                    className="h-11 bg-background border-border/50 hover:border-primary/40 focus:border-primary transition-all font-mono text-xs rounded-xl"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2 sm:col-span-2">
-                                <Label htmlFor="timeout" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{t('upstream_manager.timeout')}</Label>
-                                <Input
-                                    id="timeout"
-                                    type="number"
-                                    value={newTimeout}
-                                    onChange={e => setNewTimeout(Number(e.target.value))}
-                                    className="h-11 bg-background border-border/50 text-center font-bold rounded-xl"
-                                    min="1"
-                                />
-                            </div>
-                            <div className="sm:col-span-2">
-                                <Button type="submit" className="w-full h-11 shrink-0 font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90 rounded-xl">
-                                    <Plus className="w-4 h-4 mr-1" />
-                                    {t('common.add', 'ADD')}
-                                </Button>
-                            </div>
-                        </form>
+            <div className="flex w-full justify-center">
+                <div className="relative z-10 w-full space-y-10 pb-20 px-4 sm:px-10 pt-6 animate-fade-in">
+
+                    {/* Header & Tabs */}
+                    <div className="flex items-center gap-2 border-b border-border/40 pb-5">
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setActiveTab('routing')}
+                                className={cn(
+                                    "px-5 py-2.5 rounded-xl text-base font-medium transition-all duration-200",
+                                    activeTab === 'routing'
+                                        ? "bg-primary/10 text-primary shadow-sm"
+                                        : "text-foreground/85 hover:bg-muted/50 hover:text-foreground"
+                                )}
+                            >
+                                {t('settings.tabs.upstreams')}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('logging')}
+                                className={cn(
+                                    "px-5 py-2.5 rounded-xl text-base font-medium transition-all duration-200",
+                                    activeTab === 'logging'
+                                        ? "bg-primary/10 text-primary shadow-sm"
+                                        : "text-foreground/70 hover:bg-muted/50 hover:text-foreground"
+                                )}
+                            >
+                                {t('settings.tabs.logging')}
+                            </button>
+                        </div>
                     </div>
 
-  <Card className="border-border/40 bg-card/30 backdrop-blur-md overflow-hidden">
-  <CardHeader>
-  <CardTitle className="text-base font-black tracking-tight uppercase">
-  {t('settings.path_routing_title')}
-  </CardTitle>
-  </CardHeader>
-  <CardContent className="space-y-5">
-  <div className="flex items-center justify-between p-5 rounded-2xl border bg-muted/30 border-border/40">
-  <div className="space-y-1 pr-4">
-  <Label className="text-sm font-black uppercase tracking-wide text-foreground/90">
-  {t('settings.enable_path_routing')}
-  </Label>
-  <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic max-w-md">
-  {t('settings.enable_path_routing_hint')}
-  </p>
-  </div>
-  <input
-  type="checkbox"
-  className="h-4 w-4 shrink-0"
-  checked={enablePathRouting}
-  onChange={e => setEnablePathRouting(e.target.checked)}
-  />
-  </div>
-  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-  <div className="space-y-2">
-  <Label htmlFor="path-routing-prefix" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
-  {t('settings.path_routing_prefix')}
-  </Label>
-  <Input
-  id="path-routing-prefix"
-  value={pathRoutingPrefix}
-  onChange={e => setPathRoutingPrefix(e.target.value)}
-  placeholder="/_proxy"
-  className="h-11 bg-background border-border/50 hover:border-primary/40 focus:border-primary transition-all font-mono text-sm rounded-xl"
-  />
-  <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
-  {t('settings.path_routing_prefix_hint')}
-  </p>
-  <p className="text-[10px] text-muted-foreground/60 break-all font-mono">
-  {getPathProxyUrl('openai')}/v1/chat/completions
-  </p>
-  </div>
-  <Button
-  onClick={handleSaveRouting}
-  disabled={saving}
-  className="h-11 px-6 font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
-  >
-  <Save className="w-4 h-4 mr-2" />
-  {t('common.save')}
-  </Button>
-  </div>
-  </CardContent>
-  </Card>
-
-  <div className="grid gap-3">
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1 mb-1">
-                            {t('settings.tabs.upstreams')} ({upstreams.length})
-                        </Label>
-                        {upstreams.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 rounded-2xl border border-dashed border-border/40 bg-card/5 text-muted-foreground">
-                                <Upload className="h-10 w-10 mb-4 opacity-10" />
-                                <p className="text-sm font-bold uppercase tracking-widest opacity-30">{t('upstream_manager.no_upstreams')}</p>
-                            </div>
-                        ) : (
-                            upstreams.map(u => (
-                                <div key={u.name} className="relative flex flex-col sm:flex-row sm:items-center gap-4 bg-card/40 px-5 py-4 rounded-2xl border border-border/30 hover:border-primary/40 hover:bg-card/60 transition-all group overflow-hidden">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/0 group-hover:bg-primary/40 transition-all" />
-
-                                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                                        <div className="w-11 h-11 rounded-xl bg-primary/5 flex items-center justify-center shrink-0 border border-primary/10 group-hover:scale-105 transition-transform">
-                                            <span className="text-primary font-black text-xl uppercase leading-none">{u.name.charAt(0)}</span>
+                    {/* Content Area */}
+                    <div className="pt-2">
+                        {activeTab === 'routing' && (
+                            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:duration-0">
+                                {/* Action Toolbar */}
+                                <section className="flex flex-col gap-6">
+                                    <div className="flex flex-wrap items-end gap-x-8 gap-y-6">
+                                        <div className="w-[240px]">
+                                            <FieldBlock
+                                                label={t('settings.proxy_domain_suffix')}
+                                                hint={t('settings.proxy_domain_suffix_hint', {
+                                                    name: previewUpstreamName,
+                                                    suffix: domainSuffix,
+                                                })}
+                                            >
+                                                <Input
+                                                    value={`.${domainSuffix}`}
+                                                    readOnly
+                                                    className="h-11 rounded-xl border-border/30 bg-background/40 text-sm font-medium shadow-sm transition-colors cursor-default"
+                                                />
+                                            </FieldBlock>
                                         </div>
 
-                                        <div className="flex-1 min-w-0 space-y-0.5">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-black text-sm uppercase tracking-tight text-foreground/90">{u.name}</span>
-                                                <Badge variant="secondary" className="text-[10px] font-black bg-primary/10 text-primary border-none h-4 px-1.5 leading-none tracking-widest">.{domainSuffix}</Badge>
+                                        <div className="w-[240px]">
+                                            <FieldBlock
+                                                label={t('settings.path_routing_prefix')}
+                                                htmlFor="path-routing-prefix"
+                                                hint={t('settings.path_routing_prefix_hint')}
+                                            >
+                                                <Input
+                                                    id="path-routing-prefix"
+                                                    value={pathRoutingPrefix}
+                                                    onChange={e => setPathRoutingPrefix(e.target.value)}
+                                                    placeholder="/_proxy"
+                                                    className="h-11 rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                                />
+                                            </FieldBlock>
+                                        </div>
+
+                                        <div className="h-11 flex items-center">
+                                            <ToggleSetting
+                                                label={t('settings.enable_path_routing')}
+                                                description={t('settings.enable_path_routing_hint')}
+                                                checked={enablePathRouting}
+                                                onCheckedChange={setEnablePathRouting}
+                                            />
+                                        </div>
+
+                                        <div className="h-11 flex items-center gap-3 sm:ml-auto">
+                                            <Button
+                                                type="button"
+                                                onClick={handleSaveAll}
+                                                disabled={saving}
+                                                variant="default"
+                                                size="lg"
+                                                className="h-11 rounded-xl min-w-[120px] font-medium shadow-sm transition-all whitespace-nowrap shrink-0"
+                                            >
+                                                <Save className="mr-1.5 h-4 w-4 shrink-0" />
+                                                {t('common.save')}
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant={showAddForm ? 'secondary' : 'default'}
+                                                onClick={() => setShowAddForm(prev => !prev)}
+                                                size="lg"
+                                                className="h-11 rounded-xl min-w-[140px] font-medium shadow-sm transition-all whitespace-nowrap shrink-0"
+                                            >
+                                                {!showAddForm && <Plus className="mr-1.5 h-4 w-4 shrink-0" />}
+                                                {showAddForm ? t('common.cancel') : t('upstream_manager.add_new')}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* Upstreams List Area */}
+                                <section className="flex flex-col gap-6 pt-2">
+                                    <div className="w-full">
+                                        {showAddForm && (
+                                            <div className="mb-8 rounded-2xl bg-background/40 p-6 ring-1 ring-border/20 backdrop-blur-sm w-fit">
+                                                <form onSubmit={handleAddUpstream} className="flex flex-wrap items-end gap-6">
+                                                    <div className="w-[240px]">
+                                                        <FieldBlock label={t('upstream_manager.name')} htmlFor="name">
+                                                            <div className="relative">
+                                                                <Input
+                                                                    id="name"
+                                                                    value={newName}
+                                                                    onChange={e => setNewName(e.target.value)}
+                                                                    placeholder="openai"
+                                                                    className="h-11 rounded-xl border-border/30 bg-background/80 pr-20 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                                                    required
+                                                                />
+                                                                <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs text-muted-foreground">
+                                                                    .{domainSuffix}
+                                                                </div>
+                                                            </div>
+                                                        </FieldBlock>
+                                                    </div>
+
+                                                    <div className="w-[320px] max-w-full">
+                                                        <FieldBlock label={t('upstream_manager.target')} htmlFor="target">
+                                                            <Input
+                                                                id="target"
+                                                                value={newTarget}
+                                                                onChange={e => setNewTarget(e.target.value)}
+                                                                placeholder="https://api.openai.com"
+                                                                className="h-11 rounded-xl border-border/30 bg-background/80 font-mono text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                                                required
+                                                            />
+                                                        </FieldBlock>
+                                                    </div>
+
+                                                    <div className="w-[120px]">
+                                                        <FieldBlock label={t('upstream_manager.timeout')} htmlFor="timeout">
+                                                            <Input
+                                                                id="timeout"
+                                                                type="number"
+                                                                min="1"
+                                                                value={newTimeout}
+                                                                onChange={e => setNewTimeout(Number(e.target.value))}
+                                                                className="h-11 rounded-xl border-border/30 bg-background/80 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                                            />
+                                                        </FieldBlock>
+                                                    </div>
+
+                                                    <div className="flex h-11 items-center">
+                                                        <Button type="submit" variant="default" size="lg" className="h-11 rounded-xl min-w-[120px] font-medium shadow-sm whitespace-nowrap shrink-0">
+                                                            <Save className="mr-1.5 h-4 w-4 shrink-0" />
+                                                            {t('common.save')}
+                                                        </Button>
+                                                    </div>
+                                                </form>
                                             </div>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <button
-                                                        onClick={() => void copyText(getProxyUrl(u.name))}
-                                                        className="flex items-center gap-1.5 text-xs font-mono text-primary/60 hover:text-primary transition-colors cursor-pointer text-left"
-                                                    >
-                                                        <span className="truncate underline decoration-primary/10 underline-offset-4 font-bold">{getProxyUrl(u.name)}</span>
-                                                        <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                    </button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>{t('settings.copy_proxy_url')}</TooltipContent>
-                                            </Tooltip>
-                                        </div>
-                                    </div>
+                                        )}
 
-                                    <div className="hidden lg:flex items-center justify-center px-4">
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary/50 transition-colors" />
-                                            <span className="text-[8px] font-black uppercase tracking-tighter text-muted-foreground/20 group-hover:text-primary/20">FORWARD</span>
-                                        </div>
-                                    </div>
+                                        {upstreams.length === 0 ? (
+                                            <div className="rounded-3xl border border-dashed border-border/60 bg-muted/10 px-6 py-20 text-center">
+                                                <Upload className="mx-auto mb-4 h-10 w-10 text-muted-foreground/30" />
+                                                <p className="text-sm text-foreground/75">
+                                                    {t('upstream_manager.no_upstreams')}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-0">
+                                                <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_120px_100px] gap-6 border-b border-border/40 pb-3 px-2 lg:grid">
+                                                    <span className="text-xs font-semibold uppercase tracking-wider text-foreground/65">{t('upstream_manager.name')}</span>
+                                                    <span className="text-xs font-semibold uppercase tracking-wider text-foreground/65">{t('upstream_manager.target')}</span>
+                                                    <span className="text-xs font-semibold uppercase tracking-wider text-foreground/65">{t('upstream_manager.timeout')}</span>
+                                                    <span className="text-xs font-semibold uppercase tracking-wider text-foreground/65">{t('upstream_manager.actions')}</span>
+                                                </div>
 
-                                    <div className="flex-1 min-w-0 sm:max-w-[30%] space-y-1">
-                                        <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">{t('upstream_manager.target')}</div>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void copyText(u.target)}
-                                                    className="w-full text-[11px] text-foreground/60 font-mono truncate bg-muted/20 px-2 py-1 rounded-md flex items-center gap-2 hover:bg-muted/40 hover:text-foreground transition-colors text-left"
-                                                    title={u.target}
-                                                >
-                                                    <Globe className="h-3 w-3 shrink-0 text-muted-foreground/20" />
-                                                    <span className="min-w-0 flex-1 truncate">{u.target}</span>
-                                                    <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>{t('common.copy')}</TooltipContent>
-                                        </Tooltip>
-                                    </div>
+                                                <div className="divide-y divide-border/20">
+                                                    {upstreams.map(upstream => (
+                                                        <div
+                                                            key={upstream.name}
+                                                            className="group grid gap-5 py-5 px-2 transition-colors hover:bg-muted/20 rounded-xl lg:-mx-2 lg:px-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_120px_100px] lg:items-start lg:gap-6"
+                                                        >
+                                                            <div className="min-w-0 space-y-3">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="text-base font-semibold text-foreground">
+                                                                        {upstream.name}
+                                                                    </span>
+                                                                    <Badge variant="outline" className="rounded-full border-border/40 bg-background/50 px-2 py-0.5 text-[11px] font-medium text-foreground/80">
+                                                                        .{domainSuffix}
+                                                                    </Badge>
+                                                                </div>
 
-                                    <div className="flex items-center justify-between sm:justify-end gap-4 mt-2 sm:mt-0">
-                                        <div className="flex items-center gap-1.5 text-[10px] font-black text-muted-foreground/60 bg-muted/40 px-2.5 py-1.5 rounded-lg border border-border/20 uppercase">
-                                            <Clock className="h-3 w-3 text-muted-foreground/30" />
-                                            <span className="opacity-30">TIMEOUT</span>
-                                            {u.timeout}S
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => handleRemoveUpstream(u.name)}
-                                            className="h-9 w-9 text-muted-foreground/20 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                                <div className="space-y-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleCopy(getProxyUrl(upstream.name))}
+                                                                        className="flex items-start gap-2 text-left text-[13px] leading-relaxed text-primary/80 transition-colors hover:text-primary"
+                                                                    >
+                                                                        <Copy className="mt-1 h-3.5 w-3.5 shrink-0" />
+                                                                        <span className="break-all font-mono">{getProxyUrl(upstream.name)}</span>
+                                                                    </button>
+
+                                                                    {enablePathRouting && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleCopy(getPathProxyUrl(upstream.name))}
+                                                                            className="flex items-start gap-2 text-left text-[13px] leading-relaxed text-emerald-600/80 transition-colors hover:text-emerald-600 dark:text-emerald-400/80 dark:hover:text-emerald-400"
+                                                                        >
+                                                                            <Copy className="mt-1 h-3.5 w-3.5 shrink-0" />
+                                                                            <span className="break-all font-mono">{getPathProxyUrl(upstream.name)}</span>
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="min-w-0">
+                                                                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/60 lg:hidden">
+                                                                    {t('upstream_manager.target')}
+                                                                </p>
+                                                                <div className="text-[13px] leading-relaxed">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleCopy(upstream.target)}
+                                                                        className="flex items-start gap-2 text-left text-foreground/80 transition-colors hover:text-primary dark:hover:text-primary-foreground group/target"
+                                                                    >
+                                                                        <Copy className="mt-1 h-3.5 w-3.5 shrink-0 opacity-40 group-hover/target:opacity-100 transition-opacity" />
+                                                                        <span className="break-all font-mono">{upstream.target}</span>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            <div>
+                                                                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/50 lg:hidden">
+                                                                    {t('upstream_manager.timeout')}
+                                                                </p>
+                                                                <div className="text-[13px] font-medium text-foreground/80">
+                                                                    {upstream.timeout}s
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="lg:justify-self-start opacity-100 lg:opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => handleRemoveUpstream(upstream.name)}
+                                                                    className="h-8 rounded-lg px-2.5 text-foreground/65 hover:bg-destructive/10 hover:text-destructive"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 mr-1.5" />
+                                                                    {t('common.delete')}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {activeTab === 'logging' && (
+                            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:duration-0">
+                                <div className="max-w-3xl space-y-10">
+                                    
+                                    {/* 表单项网格 */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-8">
+                                        <FieldBlock
+                                            label={t('settings.max_request_body')}
+                                            hint={t('settings.max_request_body_hint')}
+                                            htmlFor="max-req"
+                                            unit="KB"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            <Input
+                                                id="max-req"
+                                                type="number"
+                                                min="1"
+                                                value={maxRequestBody}
+                                                onChange={e => setMaxRequestBody(Number(e.target.value))}
+                                                className="h-11 rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                            />
+                                        </FieldBlock>
+
+                                        <FieldBlock
+                                            label={t('settings.max_response_body')}
+                                            hint={t('settings.max_response_body_hint')}
+                                            htmlFor="max-res"
+                                            unit="KB"
+                                        >
+                                            <Input
+                                                id="max-res"
+                                                type="number"
+                                                min="1"
+                                                value={maxResponseBody}
+                                                onChange={e => setMaxResponseBody(Number(e.target.value))}
+                                                className="h-11 rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                            />
+                                        </FieldBlock>
+
+                                        <FieldBlock
+                                            label={t('settings.detach_body_over_bytes')}
+                                            hint={t('settings.detach_body_over_bytes_hint')}
+                                            htmlFor="detach-over"
+                                            unit="KB"
+                                        >
+                                            <Input
+                                                id="detach-over"
+                                                type="number"
+                                                min="0"
+                                                value={detachBodyOver}
+                                                onChange={e => setDetachBodyOver(Number(e.target.value))}
+                                                className="h-11 rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                            />
+                                        </FieldBlock>
+
+                                        <FieldBlock
+                                            label={t('settings.body_preview_bytes')}
+                                            hint={t('settings.body_preview_bytes_hint')}
+                                            htmlFor="preview-bytes"
+                                            unit="KB"
+                                        >
+                                            <Input
+                                                id="preview-bytes"
+                                                type="number"
+                                                min="0"
+                                                value={bodyPreview}
+                                                onChange={e => setBodyPreview(Number(e.target.value))}
+                                                className="h-11 rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                            />
+                                        </FieldBlock>
+
+                                        <FieldBlock
+                                            label={t('settings.retention_days')}
+                                            hint={t('settings.retention_days_hint')}
+                                            htmlFor="retention-days"
+                                            unit={t('settings.days')}
+                                        >
+                                            <Input
+                                                id="retention-days"
+                                                type="number"
+                                                min="0"
+                                                value={retentionDays}
+                                                onChange={e => setRetentionDays(Number(e.target.value))}
+                                                className="h-11 rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                            />
+                                        </FieldBlock>
+
+                                        {/* 开关项目放入最后网格列中 */}
+                                        <div className="flex flex-col justify-center gap-y-5 pt-3">
+                                            <ToggleSetting
+                                                label={t('settings.early_request_body_snapshot')}
+                                                description={t('settings.early_request_body_snapshot_hint')}
+                                                checked={earlyRequestBodySnapshot}
+                                                onCheckedChange={setEarlyRequestBodySnapshot}
+                                            />
+
+                                            <ToggleSetting
+                                                label={t('settings.store_base64')}
+                                                description={t('settings.store_base64_hint')}
+                                                checked={storeBase64}
+                                                onCheckedChange={setStoreBase64}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* 文本输入池 */}
+                                    <div className="pt-2">
+                                        <FieldBlock
+                                            label={t('settings.sensitive_headers')}
+                                            hint={t('settings.sensitive_headers_hint')}
+                                        >
+                                            <Textarea
+                                                value={sensitiveHeaders}
+                                                onChange={e => setSensitiveHeaders(e.target.value)}
+                                                rows={5}
+                                                className="min-h-[140px] w-full rounded-xl border-border/30 bg-background/50 font-mono text-sm leading-relaxed shadow-sm transition-colors focus-visible:bg-background resize-y"
+                                                placeholder="Authorization&#10;x-api-key&#10;api-key"
+                                            />
+                                        </FieldBlock>
+                                    </div>
+
+                                    {/* 操作区 */}
+                                    <div className="flex justify-center pt-4">
+                                        <Button
+                                            type="button"
+                                            onClick={handleSaveAll}
+                                            disabled={saving}
+                                            variant="default"
+                                            size="lg"
+                                            className="h-11 rounded-xl font-medium shadow-sm transition-all whitespace-nowrap shrink-0"
+                                        >
+                                            <Save className="mr-2 h-4 w-4 shrink-0" />
+                                            {t('common.save')}
                                         </Button>
                                     </div>
                                 </div>
-                            ))
+                            </div>
                         )}
                     </div>
-                </TabsContent>
-
-                {/* 日志配置 */}
-                <TabsContent value="logging" className="mt-6">
-                    <Card className="border-border/40 bg-card/30 backdrop-blur-md">
-                        <CardHeader>
-                            <CardTitle className="text-lg font-black tracking-tight uppercase flex items-center gap-2">
-                                <FileText className="h-5 w-5 text-primary" />
-                                {t('settings.tabs.logging')}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-8">
-                            <div className="grid gap-8 md:grid-cols-2">
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <Label htmlFor="max-req" className="text-xs font-black uppercase tracking-wider">{t('settings.max_request_body')}</Label>
-                                        <Badge variant="secondary" className="font-mono text-[10px] font-bold">{maxRequestBody} KB</Badge>
-                                    </div>
-                                    <Input
-                                        id="max-req"
-                                        type="number"
-                                        value={maxRequestBody}
-                                        onChange={e => setMaxRequestBody(Number(e.target.value))}
-                                        className="h-10 bg-background/50 border-border/50 font-bold"
-                                        min="1"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.max_request_body_hint')}</p>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <Label htmlFor="max-res" className="text-xs font-black uppercase tracking-wider">{t('settings.max_response_body')}</Label>
-                                        <Badge variant="secondary" className="font-mono text-[10px] font-bold">{maxResponseBody} KB</Badge>
-                                    </div>
-                                    <Input
-                                        id="max-res"
-                                        type="number"
-                                        value={maxResponseBody}
-                                        onChange={e => setMaxResponseBody(Number(e.target.value))}
-                                        className="h-10 bg-background/50 border-border/50 font-bold"
-                                        min="1"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.max_response_body_hint')}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid gap-8 md:grid-cols-2">
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <Label htmlFor="detach-over" className="text-xs font-black uppercase tracking-wider">{t('settings.detach_body_over_bytes')}</Label>
-                                        <Badge variant="secondary" className="font-mono text-[10px] font-bold">{detachBodyOver} KB</Badge>
-                                    </div>
-                                    <Input
-                                        id="detach-over"
-                                        type="number"
-                                        value={detachBodyOver}
-                                        onChange={e => setDetachBodyOver(Number(e.target.value))}
-                                        className="h-10 bg-background/50 border-border/50 font-bold"
-                                        min="0"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.detach_body_over_bytes_hint')}</p>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <Label htmlFor="preview-bytes" className="text-xs font-black uppercase tracking-wider">{t('settings.body_preview_bytes')}</Label>
-                                        <Badge variant="secondary" className="font-mono text-[10px] font-bold">{bodyPreview} KB</Badge>
-                                    </div>
-                                    <Input
-                                        id="preview-bytes"
-                                        type="number"
-                                        value={bodyPreview}
-                                        onChange={e => setBodyPreview(Number(e.target.value))}
-                                        className="h-10 bg-background/50 border-border/50 font-bold"
-                                        min="0"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.body_preview_bytes_hint')}</p>
-                                </div>
-                            </div>
-
-                            <Separator className="bg-border/20" />
-
-                            <div
-                                className={cn(
-                                    "flex items-center justify-between p-5 rounded-2xl border transition-all cursor-pointer group shadow-sm",
-                                    earlyRequestBodySnapshot
-                                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
-                                        : "bg-muted/30 border-border/40 hover:bg-muted/50"
-                                )}
-                                onClick={() => setEarlyRequestBodySnapshot(!earlyRequestBodySnapshot)}
-                            >
-                                <div className="flex items-start gap-4">
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors",
-                                        earlyRequestBodySnapshot
-                                            ? "bg-primary/10 border-primary/20 text-primary"
-                                            : "bg-muted border-border/40 text-muted-foreground"
-                                    )}>
-                                        <Clock className="h-5 w-5" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <Label className="text-sm font-black uppercase tracking-wide cursor-pointer text-foreground/90 group-hover:text-primary transition-colors">
-                                                {t('settings.early_request_body_snapshot')}
-                                            </Label>
-                                        </div>
-                                        <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic max-w-md">
-                                            {t('settings.early_request_body_snapshot_hint')}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div
-                                    className={cn(
-                                        "relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 border",
-                                        earlyRequestBodySnapshot ? "bg-primary border-primary/20" : "bg-muted border-border/40"
-                                    )}
-                                >
-                                    <input type="checkbox" className="sr-only" checked={earlyRequestBodySnapshot} readOnly />
-                                    <span
-                                        className={cn(
-                                            "pointer-events-none block h-6 w-6 rounded-full bg-background shadow-lg ring-0 transition-transform flex items-center justify-center",
-                                            earlyRequestBodySnapshot ? "translate-x-5" : "translate-x-0"
-                                        )}
-                                    >
-                                        {earlyRequestBodySnapshot ? (
-                                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                        ) : (
-                                            <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
-                                        )}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div
-                                className={cn(
-                                    "flex items-center justify-between p-5 rounded-2xl border transition-all cursor-pointer group shadow-sm",
-                                    storeBase64
-                                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
-                                        : "bg-muted/30 border-border/40 hover:bg-muted/50"
-                                )}
-                                onClick={() => setStoreBase64(!storeBase64)}
-                            >
-                                <div className="flex items-start gap-4">
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors",
-                                        storeBase64
-                                            ? "bg-primary/10 border-primary/20 text-primary"
-                                            : "bg-muted border-border/40 text-muted-foreground"
-                                    )}>
-                                        <ImageIcon className="h-5 w-5" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <Label className="text-sm font-black uppercase tracking-wide cursor-pointer text-foreground/90 group-hover:text-primary transition-colors">
-                                                {t('settings.store_base64')}
-                                            </Label>
-                                            {storeBase64 && (
-                                                <Badge variant="secondary" className="text-[9px] font-bold bg-primary/10 text-primary h-4 px-1.5 border-none">
-                                                    ACTIVE
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground/70 leading-relaxed font-medium max-w-[500px]">
-                                            {t('settings.store_base64_hint')}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div
-                                    className={cn(
-                                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background border-2 border-transparent shadow-inner",
-                                        storeBase64 ? "bg-primary" : "bg-muted"
-                                    )}
-                                >
-                                    <input type="checkbox" className="sr-only" checked={storeBase64} readOnly />
-                                    <span
-                                        className={cn(
-                                            "pointer-events-none block h-6 w-6 rounded-full bg-background shadow-lg ring-0 transition-transform flex items-center justify-center",
-                                            storeBase64 ? "translate-x-5" : "translate-x-0"
-                                        )}
-                                    >
-                                        {storeBase64 ? (
-                                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                        ) : (
-                                            <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
-                                        )}
-                                    </span>
-                                </div>
-                            </div>
-
-
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <ShieldAlert className="h-4 w-4 text-primary" />
-                                    <Label className="text-xs font-black uppercase tracking-wider">{t('settings.sensitive_headers')}</Label>
-                                </div>
-                                <Textarea
-                                    value={sensitiveHeaders}
-                                    onChange={e => setSensitiveHeaders(e.target.value)}
-                                    rows={5}
-                                    className="bg-background/50 border-border/50 font-mono text-xs leading-relaxed focus:ring-primary/20 transition-all min-h-[120px]"
-                                    placeholder="Authorization&#10;x-api-key&#10;api-key"
-                                />
-                                <div className="flex items-start gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                                    <AlertCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                                    <p className="text-[10px] text-primary/80 leading-relaxed font-bold uppercase">{t('settings.sensitive_headers_hint')}</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                        <CardFooter className="py-5 border-t border-border/20 bg-muted/10 justify-end">
-                            <Button
-                                onClick={handleSaveLogging}
-                                disabled={saving}
-                                className="px-8 h-11 font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
-                            >
-                                <Save className="w-4 h-4 mr-2" />
-                                {t('common.save')}
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                </TabsContent>
-
-                {/* 存储配置 */}
-                <TabsContent value="storage" className="mt-6">
-                    <Card className="border-border/40 bg-card/30 backdrop-blur-md overflow-hidden">
-                        <CardHeader>
-                            <CardTitle className="text-lg font-black tracking-tight uppercase flex items-center gap-2">
-                                <HardDrive className="h-5 w-5 text-primary" />
-                                {t('settings.tabs.storage')}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-8">
-                            <div className="max-w-sm space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <Label className="text-xs font-black uppercase tracking-wider">{t('settings.retention_days')}</Label>
-                                    <span className="text-[10px] font-bold text-primary">{t('settings.days')}</span>
-                                </div>
-                                <Input
-                                    type="number"
-                                    value={retentionDays}
-                                    onChange={e => setRetentionDays(Number(e.target.value))}
-                                    className="h-10 bg-background/50 border-border/50 font-bold"
-                                    min="0"
-                                />
-                                <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">{t('settings.retention_days_hint')}</p>
-                            </div>
-
-                            <Separator className="bg-border/20" />
-
-                            {config && (
-                                <div className="p-5 bg-card/40 rounded-xl border border-border/20 shadow-sm space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Database className="h-4 w-4 text-primary" />
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-foreground/80">{t('settings.database_path')}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 p-3 bg-black/20 rounded-lg border border-border/30 group">
-                                        <code className="flex-1 text-[10px] font-mono break-all text-muted-foreground group-hover:text-foreground transition-colors">{config.storage.database}</code>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => void copyText(config.storage.database)}>
-                                                    <Copy className="h-3 w-3" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>{t('common.copy')}</TooltipContent>
-                                        </Tooltip>
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground/40 font-medium uppercase">{t('settings.database_path_hint')}</p>
-                                </div>
-                            )}
-
-                        </CardContent>
-                        <CardFooter className="py-5 border-t border-border/20 bg-muted/10 justify-end">
-                            <Button
-                                onClick={handleSaveStorage}
-                                disabled={saving}
-                                className="px-8 h-11 font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
-                            >
-                                <Save className="w-4 h-4 mr-2" />
-                                {t('common.save')}
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+                </div>
+            </div>
         </div>
     )
 }
-
-// 尝试格式化 JSON 或做一些清理（如果需要）
-

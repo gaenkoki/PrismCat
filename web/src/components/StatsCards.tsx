@@ -71,29 +71,30 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
                     key={card.title}
                     className={cn(
                         'relative overflow-hidden',
-                        'border-border/50 bg-card/50 backdrop-blur-sm',
+                        'border border-border/50 bg-card shadow-sm hover:shadow-md transition-shadow',
                         loading && 'animate-pulse'
                     )}
                 >
-                    <CardContent className="p-5">
+                    <CardContent className="p-4 sm:p-5">
                         {/* 背景装饰光晕 */}
                         <div className={cn(
-                            'absolute -right-4 -top-4 h-16 w-16 rounded-full blur-[32px] opacity-20 dark:opacity-10',
+                            'absolute -right-4 -top-4 h-24 w-24 rounded-full blur-[32px] opacity-20 dark:opacity-10',
                             card.bgColor
                         )} />
 
-                        <div className="relative z-10">
-                            <div className="flex items-center gap-2.5 mb-3">
-                                <div className={cn('p-2 rounded-lg bg-black/5 dark:bg-white/5')}>
-                                    <card.icon className={cn('h-4 w-4', card.iconColor)} />
+                        <div className="relative z-10 flex items-start justify-between">
+                            <div className="space-y-1">
+                                <span className="text-[10px] font-bold text-foreground/75 uppercase tracking-wider">{card.title}</span>
+                                <div className={cn(
+                                    'text-xl sm:text-2xl font-black tracking-tight',
+                                    `bg-gradient-to-br ${card.gradient} bg-clip-text text-transparent`
+                                )}>
+                                    {card.isText ? card.value : card.value.toLocaleString()}
                                 </div>
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{card.title}</span>
                             </div>
-                            <div className={cn(
-                                'text-2xl font-black tracking-tight',
-                                `bg-gradient-to-br ${card.gradient} bg-clip-text text-transparent`
-                            )}>
-                                {card.isText ? card.value : card.value.toLocaleString()}
+                            
+                            <div className={cn('p-2 rounded-xl bg-background/50 backdrop-blur-sm border border-transparent shadow-sm')}>
+                                <card.icon className={cn('h-4 w-4 sm:h-5 sm:w-5', card.iconColor)} />
                             </div>
                         </div>
                     </CardContent>

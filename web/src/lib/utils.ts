@@ -51,13 +51,13 @@ export function getStatusColor(code: number): string {
 // 方法颜色
 export function getMethodColor(method: string): string {
   const colors: Record<string, string> = {
-    GET: 'bg-blue-500/15 text-blue-500 border-blue-500/25',
-    POST: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/25',
-    PUT: 'bg-amber-500/15 text-amber-500 border-amber-500/25',
-    DELETE: 'bg-rose-500/15 text-rose-500 border-rose-500/25',
-    PATCH: 'bg-violet-500/15 text-violet-500 border-violet-500/25',
+    GET: 'bg-blue-500/15 text-blue-500',
+    POST: 'bg-emerald-500/15 text-emerald-500',
+    PUT: 'bg-amber-500/15 text-amber-500',
+    DELETE: 'bg-rose-500/15 text-rose-500',
+    PATCH: 'bg-violet-500/15 text-violet-500',
   }
-  return colors[method.toUpperCase()] || 'bg-slate-500/15 text-slate-500 border-slate-500/25'
+  return colors[method.toUpperCase()] || 'bg-slate-500/15 text-slate-500'
 }
 
 // JSON 语法高亮

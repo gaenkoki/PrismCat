@@ -31,12 +31,12 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 设置 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
@@ -50,7 +50,7 @@ jobs:
           cp -r dist/* ../internal/server/ui/
 
       - name: 设置 Go 环境
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.7' # 对应 go.mod 里的版本
 
@@ -63,9 +63,6 @@ jobs:
           go build -ldflags="-s -w" -o prismcat-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }} ./cmd/prismcat
 
       - name: 上传到现有的 Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.tag_name }}
-          files: prismcat-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
+        run: gh release upload "${{ github.event.inputs.tag_name }}" "prismcat-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}" --clobber
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
