@@ -200,6 +200,8 @@ export interface ReplayResponse {
     headers: Record<string, string[]>
     body: string
     truncated?: boolean
+    body_decoded?: boolean
+    body_decoded_from?: string
 }
 
 export async function sendReplay(req: ReplayRequest): Promise<ReplayResponse> {

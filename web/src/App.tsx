@@ -3,19 +3,27 @@ import { Globe, LayoutDashboard, Settings as SettingsIcon, Zap } from 'lucide-re
 import { PrismCatLogo } from '@/components/PrismCatLogo'
 import { useTranslation } from 'react-i18next'
 import { Dashboard } from '@/pages/Dashboard'
-import { Settings } from '@/pages/Settings'
-import { Playground } from '@/pages/Playground'
 import { cn } from '@/lib/utils'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Toaster } from '@/components/ui/sonner'
-import { useState, useEffect } from 'react'
+import { Suspense, lazy, useState, useEffect } from 'react'
 import { fetchConfig } from '@/lib/api'
+
+const PlaygroundPage = lazy(async () => {
+  const module = await import('@/pages/Playground')
+  return { default: module.Playground }
+})
+
+const SettingsPage = lazy(async () => {
+  const module = await import('@/pages/Settings')
+  return { default: module.Settings }
+})
 
 function AppLayout() {
   const { t, i18n } = useTranslation()
   const location = useLocation()
-  const [version, setVersion] = useState<string>('v1.2.0') // 初始显式 v1.2.0，直到接口返回
+  const [version, setVersion] = useState<string>('v1.3.1') // 初始显式 v1.3.1，直到接口返回
 
   useEffect(() => {
     fetchConfig()
@@ -33,8 +41,23 @@ function AppLayout() {
     { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
   ]
 
+  const routeFallback = (
+    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="text-sm font-medium text-muted-foreground">
+        {t('common.loading')}
+      </div>
+    </div>
+  )
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen relative isolate">
+      {/* Background Decorative Blur - Global */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute left-[4%] top-[10%] h-72 w-72 rounded-full bg-primary/[0.10] blur-[110px] dark:bg-primary/[0.15]" />
+        <div className="absolute right-[6%] top-[25%] h-80 w-80 rounded-full bg-sky-400/[0.08] blur-[125px] dark:bg-sky-400/[0.12]" />
+        <div className="absolute left-1/2 bottom-[20%] h-72 w-[42rem] -translate-x-1/2 rounded-full bg-emerald-300/[0.08] blur-[130px] dark:bg-emerald-300/[0.10]" />
+      </div>
       {/* 头部 */}
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/80">
         <div className="w-full px-4 py-3 sm:px-6 sm:py-4">
@@ -119,11 +142,13 @@ function AppLayout() {
 
       {/* 主内容 */}
       <main className="w-full px-4 py-5 space-y-6 sm:px-6 sm:py-6">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/playground" element={<Playground />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
+        <Suspense fallback={routeFallback}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/playground" element={<PlaygroundPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* 页脚版本号 */}

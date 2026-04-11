@@ -26,18 +26,18 @@ interface LogTableProps {
 }
 
 function getStatusBadgeColor(code: number): string {
-    if (code >= 200 && code < 300) return 'bg-green-500/10 text-green-600 border-green-500/20 dark:text-green-400'
-    if (code >= 300 && code < 400) return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20 dark:text-yellow-400'
-    if (code >= 400 && code < 500) return 'bg-orange-500/10 text-orange-600 border-orange-500/20 dark:text-orange-400'
-    if (code >= 500) return 'bg-red-500/10 text-red-600 border-red-500/20 dark:text-red-400'
-    return 'bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400'
+    if (code >= 200 && code < 300) return 'bg-green-500/10 text-green-600 dark:text-green-400'
+    if (code >= 300 && code < 400) return 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+    if (code >= 400 && code < 500) return 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+    if (code >= 500) return 'bg-red-500/10 text-red-600 dark:text-red-400'
+    return 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
 }
 
 function MobileLogSkeleton() {
     return (
         <div className="space-y-3 md:hidden">
             {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="rounded-2xl border border-border/40 bg-card/40 p-4 space-y-3">
+                <div key={index} className="rounded-2xl bg-card/20 p-4 space-y-3">
                     <div className="flex items-center gap-2">
                         <Skeleton className="h-6 w-16 rounded-full bg-muted/50" />
                         <Skeleton className="h-6 w-14 rounded-full bg-muted/50" />
@@ -57,7 +57,7 @@ function MobileLogSkeleton() {
 
 function DesktopLogSkeleton({ t }: { t: (key: string) => string }) {
     return (
-        <div className="hidden rounded-xl border border-border/50 overflow-hidden bg-card/30 md:block">
+        <div className="hidden rounded-2xl overflow-hidden bg-card/20 md:block">
             <Table>
                 <TableHeader className="bg-muted/50">
                     <TableRow>
@@ -108,10 +108,10 @@ function MobileLogCard({
             type="button"
             onClick={() => onSelect(log)}
             className={cn(
-                'w-full rounded-2xl border p-4 text-left transition-all active:scale-[0.99]',
+                'w-full rounded-2xl p-4 text-left transition-all active:scale-[0.99]',
                 selected
-                    ? 'border-primary/40 bg-primary/10 shadow-lg shadow-primary/10'
-                    : 'border-border/40 bg-card/40 hover:border-primary/20 hover:bg-card/70'
+                    ? 'bg-primary/10 shadow-md shadow-primary/5'
+                    : 'bg-card/20 hover:bg-card/40'
             )}
         >
             <div className="flex items-start gap-3">
@@ -119,7 +119,7 @@ function MobileLogCard({
                     <div className="flex flex-wrap items-center gap-2">
                         <span
                             className={cn(
-                                'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em]',
+                                'inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em]',
                                 getMethodColor(log.method)
                             )}
                         >
@@ -127,24 +127,24 @@ function MobileLogCard({
                         </span>
                         <span
                             className={cn(
-                                'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black tracking-wider',
+                                'inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black tracking-wider',
                                 getStatusBadgeColor(log.status_code)
                             )}
                         >
                             {log.status_code || '---'}
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-background/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                             <Server className="h-3 w-3" />
                             <span className="truncate max-w-[120px]">{log.upstream}</span>
                         </span>
                         {log.streaming && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-600 dark:text-violet-400">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-600 dark:text-violet-400">
                                 <Zap className="h-3 w-3" />
                                 {streamingLabel}
                             </span>
                         )}
                         {log.tag && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
                                 <TagIcon className="h-3 w-3" />
                                 <span className="truncate max-w-[120px]">{log.tag}</span>
                             </span>
@@ -152,9 +152,9 @@ function MobileLogCard({
                     </div>
 
                     <div className="space-y-1.5">
-                        <div className="font-mono text-xs leading-relaxed text-foreground/90 break-all">
+                        <div className="font-mono text-xs leading-relaxed text-foreground break-all">
                             {log.path}
-                            {log.query && <span className="text-muted-foreground/60">?{log.query}</span>}
+                            {log.query && <span className="text-muted-foreground/80">?{log.query}</span>}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/70">
                             <span className="inline-flex items-center gap-1">
@@ -167,7 +167,7 @@ function MobileLogCard({
                     </div>
                 </div>
 
-                <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground/80">
+                <div className="shrink-0 inline-flex items-center gap-1 rounded-full bg-background/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">
                     <span>{detailLabel}</span>
                     <ChevronRight className="h-3.5 w-3.5" />
                 </div>
@@ -190,10 +190,10 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
 
     if (logs.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 sm:py-24 text-muted-foreground bg-card/20 rounded-2xl border border-dashed border-border/50 px-6">
+            <div className="flex flex-col items-center justify-center py-20 sm:py-24 text-muted-foreground bg-card/10 rounded-2xl px-6">
                 <div className="text-5xl sm:text-6xl mb-6 grayscale opacity-50">📭</div>
                 <div className="text-lg sm:text-xl font-semibold tracking-tight text-foreground/70 text-center">{t('log_table.no_logs')}</div>
-                <p className="text-sm mt-2 max-w-[280px] text-center leading-relaxed font-medium opacity-60">
+                <p className="text-sm mt-2 max-w-[280px] text-center leading-relaxed font-medium text-muted-foreground/80">
                     {t('log_table.send_requests_hint', '发送一些请求后这里会显示日志')}
                 </p>
             </div>
@@ -217,7 +217,7 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                 ))}
             </div>
 
-            <div className="hidden rounded-xl border border-border/40 overflow-hidden bg-card/30 backdrop-blur-sm md:block">
+            <div className="hidden rounded-2xl overflow-hidden bg-card/20 md:block">
                 <Table>
                     <TableHeader className="bg-muted/30">
                         <TableRow className="hover:bg-transparent">
@@ -235,14 +235,14 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                             <TableRow
                                 key={log.id}
                                 className={cn(
-                                    'transition-colors border-border/20',
+                                    'transition-colors border-b',
                                     selectedId === log.id ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/40'
                                 )}
                             >
                                 <TableCell>
                                     <div
                                         className={cn(
-                                            'inline-flex items-center justify-center min-w-[56px] h-6 px-2 rounded-md border text-[10px] font-black uppercase tracking-[0.18em]',
+                                            'inline-flex items-center justify-center min-w-[56px] h-6 px-2 rounded-md text-[10px] font-black uppercase tracking-[0.18em]',
                                             getMethodColor(log.method)
                                         )}
                                     >
@@ -260,7 +260,7 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                                     </span>
                                 </TableCell>
                                 <TableCell>
-                                    <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground/60 truncate block max-w-[90px]">
+                                    <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground/85 truncate block max-w-[90px]">
                                         {log.upstream}
                                     </span>
                                 </TableCell>
@@ -268,12 +268,12 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                                     <div className="flex items-center gap-2">
                                         <span className="truncate font-mono text-xs text-foreground/90 select-text">
                                             {log.path}
-                                            {log.query && <span className="text-muted-foreground/50">?{log.query}</span>}
+                                            {log.query && <span className="text-muted-foreground/75">?{log.query}</span>}
                                         </span>
                                         {log.tag && (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <span className="shrink-0 inline-flex items-center h-[18px] px-1.5 rounded-[3px] text-[9px] font-black uppercase tracking-tight bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                                    <span className="shrink-0 inline-flex items-center h-[18px] px-1.5 rounded-[3px] text-[9px] font-black uppercase tracking-tight bg-amber-500/15 text-amber-600 dark:text-amber-400">
                                                         {log.tag}
                                                     </span>
                                                 </TooltipTrigger>
@@ -302,7 +302,7 @@ export function LogTable({ logs, loading, onSelect, selectedId }: LogTableProps)
                                     </span>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <span className="text-[11px] text-muted-foreground/60 font-medium">
+                                    <span className="text-[11px] text-muted-foreground/85 font-medium">
                                         {formatDate(log.created_at, i18n.language)}
                                     </span>
                                 </TableCell>

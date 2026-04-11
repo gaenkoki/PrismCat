@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, Eye, Image as ImageIcon, FileCode } from 'lucide-react';
@@ -22,6 +22,12 @@ interface Base64Detection {
 }
 
 const NO_B64: Base64Detection = { isBase64: false, fileType: null, isImage: false, label: '' };
+const LARGE_TEXT_THRESHOLD = 50_000;
+const LARGE_TEXT_PREVIEW_LENGTH = 4_000;
+const ROOT_AUTO_EXPAND_LIMIT = 12;
+const CHILD_AUTO_EXPAND_LIMIT = 6;
+const ARRAY_SHAPE_SAMPLE_SIZE = 5;
+const ARRAY_SHAPE_FORCE_EXPAND_LIMIT = 6;
 
 /**
  * Detect whether a string is base64-encoded binary data.
@@ -80,9 +86,17 @@ interface JsonViewerProps {
 export function JsonViewer({ data, initialExpanded = true }: JsonViewerProps) {
     if (typeof data === 'string') return <SmartText text={data} />;
     if (typeof data !== 'object' || data === null) return <ValueNode value={data} />;
+
+    const rootInitialExpanded = shouldAutoExpandNode({
+        data,
+        depth: 0,
+        isRoot: true,
+        initialExpanded,
+    });
+
     return (
         <div className="font-mono text-[11px] leading-relaxed select-text">
-            <CollapsibleNode data={data} label="" isRoot initialExpanded={initialExpanded} depth={0} />
+            <CollapsibleNode data={data} label="" isRoot initialExpanded={rootInitialExpanded} depth={0} />
         </div>
     );
 }
@@ -90,9 +104,10 @@ export function JsonViewer({ data, initialExpanded = true }: JsonViewerProps) {
 // ─── SmartText: raw text with base64 detection ───────────────────────
 
 export function SmartText({ text }: { text: string }) {
+    const isLargeText = text.length > LARGE_TEXT_THRESHOLD;
     type Seg = { type: 'text'; content: string } | { type: 'b64'; content: string; detection: Base64Detection; prefix?: string };
     const segments = useMemo(() => {
-        if (!text || text.length < 200) return null;
+        if (isLargeText || !text || text.length < 200) return null;
         const parts: Seg[] = [];
         let lastIndex = 0, found = false;
         const regex = /(data:[^\s]+?;base64,)?([A-Za-z0-9+/]{200,}[=]{0,2})/g;
@@ -111,7 +126,11 @@ export function SmartText({ text }: { text: string }) {
         if (!found) return null;
         if (lastIndex < text.length) parts.push({ type: 'text', content: text.substring(lastIndex) });
         return parts;
-    }, [text]);
+    }, [isLargeText, text]);
+
+    if (isLargeText) {
+        return <LargeTextPreview text={text} />;
+    }
 
     if (!segments) return <pre className="whitespace-pre-wrap break-all text-[11px] font-mono">{text}</pre>;
     return (
@@ -125,30 +144,154 @@ export function SmartText({ text }: { text: string }) {
     );
 }
 
+function LargeTextPreview({ text }: { text: string }) {
+    const { t } = useTranslation();
+    const [expanded, setExpanded] = useState(false);
+    const preview = useMemo(() => text.slice(0, LARGE_TEXT_PREVIEW_LENGTH), [text]);
+
+    const copyToClipboard = () => {
+        void navigator.clipboard.writeText(text);
+    };
+
+    return (
+        <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                <span>{t('json_viewer.large_text', 'Large Text')}</span>
+                <span>{formatSize(text.length)}</span>
+                <button
+                    type="button"
+                    onClick={copyToClipboard}
+                    className="text-muted-foreground transition-colors hover:text-primary"
+                >
+                    {t('json_viewer.copy')}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setExpanded((value) => !value)}
+                    className="text-muted-foreground transition-colors hover:text-primary"
+                >
+                    {expanded ? t('json_viewer.collapse') : t('json_viewer.expand')}
+                </button>
+            </div>
+            <pre className="whitespace-pre-wrap break-all rounded-xl border border-border/60 bg-background p-3 text-[11px] font-mono shadow-xs">
+                {expanded || text.length <= preview.length ? text : `${preview}\n...`}
+            </pre>
+        </div>
+    );
+}
+
 // ─── CollapsibleNode: renders objects and arrays as a tree ────────────
+
+function getEntryCount(data: any): number {
+    return Array.isArray(data) ? data.length : Object.keys(data).length;
+}
+
+function getShallowValueKind(value: any): string {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value === 'object' ? 'object' : typeof value;
+}
+
+function getShallowShapeSignature(value: any): string {
+    if (value === null) return 'null';
+
+    if (Array.isArray(value)) {
+        const previewKinds = value.slice(0, 3).map(getShallowValueKind);
+        return `array:${previewKinds.join('|')}:${value.length > 3 ? 'more' : 'full'}`;
+    }
+
+    if (typeof value === 'object') {
+        const keys = Object.keys(value).sort();
+        const limitedKeys = keys.slice(0, 20);
+        const fields = limitedKeys.map((key) => `${key}:${getShallowValueKind(value[key])}`);
+        const suffix = keys.length > limitedKeys.length ? `|+${keys.length - limitedKeys.length}` : '';
+        return `object:${fields.join('|')}${suffix}`;
+    }
+
+    return typeof value;
+}
+
+function shouldAutoExpandNode({
+    data,
+    depth,
+    isRoot,
+    initialExpanded,
+    forceExpanded = false,
+}: {
+    data: any;
+    depth: number;
+    isRoot: boolean;
+    initialExpanded: boolean;
+    forceExpanded?: boolean;
+}): boolean {
+    if (!initialExpanded) return false;
+
+    const entryCount = getEntryCount(data);
+    if (isRoot) return entryCount <= ROOT_AUTO_EXPAND_LIMIT;
+    if (forceExpanded) return entryCount <= ARRAY_SHAPE_FORCE_EXPAND_LIMIT;
+
+    return depth < 1 && entryCount <= CHILD_AUTO_EXPAND_LIMIT;
+}
 
 /** Produce a CSS indent string for the given depth (2 spaces per level). */
 function indent(depth: number): string {
     return '\u00A0\u00A0'.repeat(depth); // Non-breaking spaces × 2 per level
 }
 
-function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, initialExpanded = true, suffix = null, depth = 0 }: {
+function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, initialExpanded = true, forceExpanded = false, suffix = null, depth = 0 }: {
     data: any;
     label: string;
     isRoot?: boolean;
     isArrayItem?: boolean;
     initialExpanded?: boolean;
+    forceExpanded?: boolean;
     suffix?: ReactNode;
     depth?: number;
 }) {
     const { t } = useTranslation();
-    const [expanded, setExpanded] = useState(initialExpanded);
+    const [expanded, setExpanded] = useState(() =>
+        shouldAutoExpandNode({ data, depth, isRoot, initialExpanded, forceExpanded })
+    );
     const isArray = Array.isArray(data);
     const entries = Object.entries(data);
     const isEmpty = entries.length === 0;
     const [open, close] = isArray ? ['[', ']'] : ['{', '}'];
     const showLabel = !isRoot && !isArrayItem;
     const pad = indent(depth);
+    const sampledArrayShapes = useMemo(() => {
+        if (!isArray) return null;
+
+        const sampleSize = Math.min(data.length, ARRAY_SHAPE_SAMPLE_SIZE);
+        const shapes = new Set<string>();
+
+        for (let i = 0; i < sampleSize; i++) {
+            const item = data[i];
+            if (item === null || typeof item !== 'object') continue;
+            shapes.add(getShallowShapeSignature(item));
+        }
+
+        return { sampleSize, shapes };
+    }, [data, isArray]);
+
+    useEffect(() => {
+        setExpanded(shouldAutoExpandNode({ data, depth, isRoot, initialExpanded, forceExpanded }));
+    }, [data, depth, isRoot, initialExpanded, forceExpanded]);
+
+    const shouldForceExpandArrayChild = (idx: number, value: any) => {
+        if (!isArray || !sampledArrayShapes || value === null || typeof value !== 'object') {
+            return false;
+        }
+
+        if (idx < sampledArrayShapes.sampleSize) {
+            return true;
+        }
+
+        if (sampledArrayShapes.shapes.size === 0) {
+            return false;
+        }
+
+        return !sampledArrayShapes.shapes.has(getShallowShapeSignature(value));
+    };
 
     if (isEmpty) {
         return (
@@ -184,7 +327,19 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
             {expanded && entries.map(([key, value], idx) => {
                 const comma = idx < entries.length - 1 ? <span className="text-muted-foreground/40">,</span> : null;
                 if (typeof value === 'object' && value !== null) {
-                    return <CollapsibleNode key={key} data={value} label={key} isArrayItem={isArray} initialExpanded={idx < 10} suffix={comma} depth={depth + 1} />;
+                    const forceExpandChild = shouldForceExpandArrayChild(idx, value);
+                    return (
+                        <CollapsibleNode
+                            key={key}
+                            data={value}
+                            label={key}
+                            isArrayItem={isArray}
+                            initialExpanded={forceExpandChild || (depth === 0 && idx < 3)}
+                            forceExpanded={forceExpandChild}
+                            suffix={comma}
+                            depth={depth + 1}
+                        />
+                    );
                 }
                 return (
                     <div key={key} className="flex items-start">
@@ -270,7 +425,7 @@ function Base64Placeholder({ value, detection, dataUriPrefix }: {
     if (showFull) {
         return (
             <span className="relative group/b64">
-                <span className="text-emerald-600 dark:text-emerald-400 break-all bg-emerald-500/5 p-0.5 rounded">{value}</span>
+                <span className="text-emerald-600 dark:text-emerald-400 break-all rounded-sm bg-emerald-500/10 p-0.5">{value}</span>
                 <Button variant="ghost" size="sm" onClick={() => setShowFull(false)} className="h-6 px-2 text-[10px] font-bold ml-1">
                     {t('json_viewer.collapse')}
                 </Button>
@@ -279,7 +434,7 @@ function Base64Placeholder({ value, detection, dataUriPrefix }: {
     }
 
     return (
-        <span className="inline-flex items-center gap-1.5 py-0.5 px-2 rounded-md bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all my-0.5">
+        <span className="my-0.5 inline-flex items-center gap-1.5 rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 transition-colors hover:border-indigo-500/40">
             {detection.isImage
                 ? <ImageIcon className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
                 : <FileCode className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />}
@@ -304,17 +459,17 @@ function Base64Placeholder({ value, detection, dataUriPrefix }: {
 
             {imgSrc && (
                 <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                    <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-1 overflow-hidden border-none shadow-2xl">
-                        <DialogHeader className="p-4 bg-muted/20 border-b border-border/40">
+                    <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden rounded-2xl border border-border/60 bg-card p-1 shadow-2xl">
+                        <DialogHeader className="border-b border-border/60 bg-muted/30 p-4">
                             <DialogTitle className="text-xs font-bold flex items-center gap-2">
                                 <ImageIcon className="h-3.5 w-3.5" />
                                 {t('json_viewer.image_preview')} · {detection.label} ({formatSize(value.length)})
                             </DialogTitle>
                         </DialogHeader>
-                        <div className="flex-1 overflow-auto p-8 flex items-center justify-center bg-slate-50 dark:bg-card/50">
-                            <img src={imgSrc} alt="Preview" className="max-w-full max-h-full shadow-2xl rounded border border-white/10" />
+                        <div className="flex flex-1 items-center justify-center overflow-auto bg-muted/30 p-8">
+                            <img src={imgSrc} alt="Preview" className="max-h-full max-w-full rounded-xl border border-border/60 bg-background shadow-2xl" />
                         </div>
-                        <div className="p-4 bg-muted/20 border-t border-border/40 flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 border-t border-border/60 bg-muted/30 p-4">
                             <Button variant="outline" size="sm" onClick={copyToClipboard} className="text-[10px] font-bold h-8">
                                 <Copy className="h-3 w-3 mr-2" />
                                 {t('json_viewer.copy')}

@@ -1,9 +1,8 @@
 import { cn } from '@/lib/utils'
 import { Search, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Upstream, LogFilter } from '@/lib/api'
-import { useState, useEffect } from 'react'
+import { Suspense, lazy, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DateRangePicker } from './DateRangePicker'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,8 +12,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface LogFiltersProps {
     filter: LogFilter
@@ -25,6 +29,21 @@ interface LogFiltersProps {
 }
 
 const DEFAULT_FILTER: LogFilter = { limit: 20, offset: 0 }
+
+const DateRangePicker = lazy(async () => {
+    const module = await import('./DateRangePicker')
+    return { default: module.DateRangePicker }
+})
+
+function DateRangePickerFallback() {
+    return (
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <div className="h-10 rounded-lg border border-border/50 bg-background/50 sm:min-w-[170px]" />
+            <span className="hidden text-muted-foreground/30 text-sm font-bold mx-1 sm:inline">/</span>
+            <div className="h-10 rounded-lg border border-border/50 bg-background/50 sm:min-w-[170px]" />
+        </div>
+    )
+}
 
 export function LogFilters({
     filter,
@@ -76,77 +95,85 @@ export function LogFilters({
 
     return (
         <div className="flex flex-col gap-4 px-0 py-2 sm:px-4 sm:pr-6">
-            {/* 第一行：筛选条件 */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                {/* 搜索框 */}
-                <div className="relative w-full flex-1 min-w-0 sm:min-w-[240px] sm:max-w-sm">
-                    <div className="relative">
-                        <Input
-                            placeholder={t('filters.search_path')}
-                            value={draft.path || ''}
-                            onChange={(e) => setDraft({ ...draft, path: e.target.value })}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    handleSearch()
-                                }
-                            }}
-                            className={cn(
-                                "h-10 border-border/50 bg-background/50 transition-all",
-                                isPathChanged && "border-primary/50 ring-1 ring-primary/20"
-                            )}
-                        />
-                        {isPathChanged && (
-                            <Badge className="absolute right-2 top-2 h-6 px-1.5 text-[9px] font-black uppercase bg-primary/20 text-primary border-none">
-                                Edited
-                            </Badge>
+            {/* 第一层级：核心查询 (搜索 + 时间) */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1 group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/75 transition-colors group-focus-within:text-primary" />
+                    <Input
+                        placeholder={t('filters.search_path')}
+                        value={draft.path || ''}
+                        onChange={(e) => setDraft({ ...draft, path: e.target.value })}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSearch()
+                        }}
+                        className={cn(
+                            "h-9 pl-9 border border-input shadow-sm bg-background transition-all hover:bg-accent focus-visible:bg-background",
+                            isPathChanged && "border-primary/50 ring-1 ring-primary/20"
                         )}
-                    </div>
+                    />
+                    {isPathChanged && (
+                        <Badge className="absolute right-2 top-2 h-6 px-1.5 text-[9px] font-black uppercase bg-primary/20 text-primary border-none">
+                            Edited
+                        </Badge>
+                    )}
                 </div>
 
-                <Separator orientation="vertical" className="h-6 bg-border/40 hidden md:block" />
+                <div className={cn(
+                    "w-full sm:w-auto rounded-lg transition-all",
+                    isTimeChanged && "ring-2 ring-primary/20 border-primary/40"
+                )}>
+                    <Suspense fallback={<DateRangePickerFallback />}>
+                        <DateRangePicker
+                            value={{ startTime: draft.start_time, endTime: draft.end_time }}
+                            onChange={({ startTime, endTime }) => {
+                                setDraft({ ...draft, start_time: startTime, end_time: endTime })
+                            }}
+                        />
+                    </Suspense>
+                </div>
+            </div>
 
-                {/* 上游筛选 */}
-                <Select
-                    value={draft.upstream || "all"}
-                    onValueChange={(val) => setDraft({ ...draft, upstream: val === "all" ? "" : val })}
-                >
-                    <SelectTrigger className={cn(
-                        "w-full h-10 bg-background/50 border-border/50 sm:w-[160px]",
-                        isUpstreamChanged && "border-primary/50 ring-1 ring-primary/20"
-                    )}>
-                        <SelectValue placeholder={t('filters.all_upstreams')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">{t('filters.all_upstreams')}</SelectItem>
-                        {upstreams.map((up) => (
-                            <SelectItem key={up.name} value={up.name} className="uppercase font-bold text-xs tracking-tight">
-                                {up.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            {/* 第二层级：属性筛选 (Grid对其) + 操作按钮 */}
+            <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full xl:w-auto xl:flex-1">
+                    <Select
+                        value={draft.upstream || "all"}
+                        onValueChange={(val) => setDraft({ ...draft, upstream: val === "all" ? "" : val })}
+                    >
+                        <SelectTrigger className={cn(
+                            "w-full h-9 bg-background border border-input shadow-sm hover:bg-accent",
+                            isUpstreamChanged && "border-primary/50 ring-1 ring-primary/20"
+                        )}>
+                            <SelectValue placeholder={t('filters.all_upstreams')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">{t('filters.all_upstreams')}</SelectItem>
+                            {upstreams.map((up) => (
+                                <SelectItem key={up.name} value={up.name} className="uppercase font-bold text-xs tracking-tight">
+                                    {up.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                {/* 方法筛选 */}
-                <Select
-                    value={draft.method || "all"}
-                    onValueChange={(val) => setDraft({ ...draft, method: val === "all" ? "" : val })}
-                >
-                    <SelectTrigger className={cn(
-                        "w-full h-10 bg-background/50 border-border/50 sm:w-[120px]",
-                        isMethodChanged && "border-primary/50 ring-1 ring-primary/20"
-                    )}>
-                        <SelectValue placeholder={t('filters.all_methods')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">{t('filters.all_methods')}</SelectItem>
-                        {["GET", "POST", "PUT", "DELETE", "PATCH"].map((m) => (
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    <Select
+                        value={draft.method || "all"}
+                        onValueChange={(val) => setDraft({ ...draft, method: val === "all" ? "" : val })}
+                    >
+                        <SelectTrigger className={cn(
+                            "w-full h-9 bg-background border border-input shadow-sm hover:bg-accent",
+                            isMethodChanged && "border-primary/50 ring-1 ring-primary/20"
+                        )}>
+                            <SelectValue placeholder={t('filters.all_methods')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">{t('filters.all_methods')}</SelectItem>
+                            {["GET", "POST", "PUT", "DELETE", "PATCH"].map((m) => (
+                                <SelectItem key={m} value={m}>{m}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                {/* 状态码筛选 */}
-                <div className="relative w-full sm:w-[100px]">
                     <Input
                         type="text"
                         placeholder={t('filters.status_code')}
@@ -156,79 +183,69 @@ export function LogFilters({
                             setDraft({ ...draft, status_code: val ? Number(val) : undefined })
                         }}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handleSearch()
-                            }
+                            if (e.key === 'Enter') handleSearch()
                         }}
                         className={cn(
-                            "h-10 border-border/50 bg-background/50 transition-all",
+                            "w-full h-9 border border-input shadow-sm bg-background transition-all hover:bg-accent focus-visible:bg-background",
                             isStatusCodeChanged && "border-primary/50 ring-1 ring-primary/20"
                         )}
                     />
-                </div>
 
-                {/* Tag 筛选 */}
-                <div className="relative w-full min-w-0 sm:min-w-[140px] sm:max-w-[200px]">
                     <Input
                         placeholder={t('filters.tag_placeholder')}
                         value={draft.tag || ''}
                         onChange={(e) => setDraft({ ...draft, tag: e.target.value })}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handleSearch()
-                            }
+                            if (e.key === 'Enter') handleSearch()
                         }}
                         className={cn(
-                            "h-10 border-border/50 bg-background/50 transition-all",
+                            "w-full h-9 border border-input shadow-sm bg-background transition-all hover:bg-accent focus-visible:bg-background",
                             isTagChanged && "border-primary/50 ring-1 ring-primary/20"
                         )}
                     />
                 </div>
-            </div>
 
-            {/* 第二行：时间范围 + 操作按钮 */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                {/* 时间范围选择器 */}
-                <div className={cn(
-                    "w-full rounded-lg transition-all sm:w-auto",
-                    isTimeChanged && "ring-2 ring-primary/20 border-primary/40"
-                )}>
-                    <DateRangePicker
-                        value={{ startTime: draft.start_time, endTime: draft.end_time }}
-                        onChange={({ startTime, endTime }) => {
-                            setDraft({ ...draft, start_time: startTime, end_time: endTime })
-                        }}
-                    />
-                </div>
+                {/* 按钮部分 - 使用仅图标按钮 + Tooltip */}
+                <div className="flex items-center gap-2 w-full xl:w-auto shrink-0">
+                    <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="default"
+                                    size="icon"
+                                    onClick={handleSearch}
+                                    disabled={loading}
+                                    className={cn(
+                                        "h-9 w-9 shrink-0 transition-all shadow-md",
+                                        hasChanges
+                                            ? "bg-primary hover:bg-primary/90 shadow-primary/20 scale-105"
+                                            : "bg-primary/80 hover:bg-primary shadow-primary/10"
+                                    )}
+                                >
+                                    <Search className={cn("h-4 w-4", loading && "animate-spin")} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{t('filters.search')}</p>
+                            </TooltipContent>
+                        </Tooltip>
 
-                <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
-                    {/* 查询按钮 */}
-                    <Button
-                        variant="default"
-                        size="sm"
-                        onClick={handleSearch}
-                        disabled={loading}
-                        className={cn(
-                            "h-10 flex-1 px-6 font-bold justify-center transition-all shadow-lg sm:flex-none",
-                            hasChanges
-                                ? "bg-primary hover:bg-primary/90 shadow-primary/20 scale-105"
-                                : "bg-primary/80 hover:bg-primary shadow-primary/10"
-                        )}
-                    >
-                        <Search className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                        <span>{t('filters.search')}</span>
-                    </Button>
-
-                    {/* 重置按钮 */}
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleReset}
-                        className="h-10 flex-1 px-4 border-border/50 bg-background/50 text-muted-foreground hover:text-foreground sm:flex-none"
-                    >
-                        <RotateCcw className="h-4 w-4 mr-2" />
-                        <span>{t('filters.reset')}</span>
-                    </Button>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={handleReset}
+                                    className="h-9 w-9 shrink-0 border border-input shadow-sm bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+                                >
+                                    <RotateCcw className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{t('filters.reset')}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 </div>
             </div>
 
@@ -239,7 +256,7 @@ export function LogFilters({
                         {t('filters.total_count', { count: total })}
                     </span>
                     {total > 0 && (
-                        <Badge variant="outline" className="text-[9px] border-border/50 text-muted-foreground/50">
+                        <Badge variant="outline" className="text-[9px] border-border bg-background text-muted-foreground/75">
                             {pageSize} / PAGE
                         </Badge>
                     )}
@@ -249,14 +266,14 @@ export function LogFilters({
                     <Button
                         variant="outline"
                         size="icon"
-                        className="h-8 w-8 rounded-md border-border/40 hover:bg-primary hover:text-primary-foreground transition-all"
+                        className="h-8 w-8 rounded-md border border-border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
                         onClick={() => goToPage(currentPage - 1)}
                         disabled={currentPage <= 1}
                     >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
 
-                    <div className="flex items-center h-8 px-4 rounded-md border border-border/40 bg-background/50 font-mono text-xs font-bold text-foreground/80">
+                    <div className="flex items-center h-8 px-4 rounded-md border border-border shadow-sm bg-background font-mono text-xs font-bold text-foreground/80">
                         <span className="text-primary">{currentPage}</span>
                         <span className="mx-2 text-muted-foreground/30">/</span>
                         <span>{totalPages || 1}</span>
@@ -265,7 +282,7 @@ export function LogFilters({
                     <Button
                         variant="outline"
                         size="icon"
-                        className="h-8 w-8 rounded-md border-border/40 hover:bg-primary hover:text-primary-foreground transition-all"
+                        className="h-8 w-8 rounded-md border border-border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
                         onClick={() => goToPage(currentPage + 1)}
                         disabled={currentPage >= totalPages}
                     >

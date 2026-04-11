@@ -29,6 +29,7 @@ interface HeaderEntry {
 }
 
 type RequestTab = 'body' | 'headers'
+type ResponseViewMode = 'pretty' | 'raw'
 
 export function Playground() {
     const { t } = useTranslation()
@@ -55,6 +56,7 @@ export function Playground() {
     const [methodOpen, setMethodOpen] = useState(false)
     const [upstreamOpen, setUpstreamOpen] = useState(false)
     const [activeTab, setActiveTab] = useState<RequestTab>('body')
+    const [responseViewMode, setResponseViewMode] = useState<ResponseViewMode>('pretty')
 
     // Load upstreams
     useEffect(() => {
@@ -94,13 +96,14 @@ export function Playground() {
 
     // Parsed response body
     const parsedResponseBody = useMemo(() => {
+        if (responseViewMode !== 'pretty') return null
         if (!response?.body) return null
         try {
             return JSON.parse(response.body)
         } catch {
             return null
         }
-    }, [response?.body])
+    }, [responseViewMode, response?.body])
 
     const handleAddHeader = () => {
         setHeaders([...headers, { key: '', value: '', id: generateId() }])
@@ -125,6 +128,7 @@ export function Playground() {
 
         setError(null)
         setResponse(null)
+        setResponseViewMode('pretty')
         setSending(true)
 
         const headerMap: Record<string, string> = {}
@@ -151,6 +155,41 @@ export function Playground() {
         }
     }, [upstream, method, path, headers, body])
 
+    const RawBodyViewer = ({ text }: { text: string }) => (
+        <pre className="whitespace-pre-wrap break-all text-[11px] font-mono leading-relaxed text-foreground select-text">
+            {text}
+        </pre>
+    )
+
+    const ViewToggle = ({
+        value,
+        onChange,
+    }: {
+        value: ResponseViewMode
+        onChange: (value: ResponseViewMode) => void
+    }) => (
+        <div className="flex items-center gap-1 rounded-md border border-border/40 bg-background/70 p-1">
+            {([
+                { value: 'pretty', label: t('log_detail.view_pretty', 'Pretty') },
+                { value: 'raw', label: t('log_detail.view_raw', 'Raw') },
+            ] as const).map((option) => (
+                <Button
+                    key={option.value}
+                    type="button"
+                    variant={value === option.value ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => onChange(option.value)}
+                    className={cn(
+                        'h-6 px-2 text-[10px] font-bold uppercase tracking-wider',
+                        value === option.value && 'shadow-none'
+                    )}
+                >
+                    {option.label}
+                </Button>
+            ))}
+        </div>
+    )
+
     // Handle Ctrl+Enter to send
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -165,11 +204,6 @@ export function Playground() {
 
     return (
         <div className="w-full space-y-5 animate-fade-in">
-            {/* Title */}
-            <div>
-                <h2 className="text-xl font-black tracking-tight">{t('playground.title')}</h2>
-                <p className="text-xs text-muted-foreground/60 mt-0.5">{t('playground.description')}</p>
-            </div>
 
             {/* Unified Address Bar */}
             <div className="flex items-center gap-2 bg-muted/10 p-1.5 rounded-2xl">
@@ -210,7 +244,7 @@ export function Playground() {
                 <div className="relative shrink-0">
                     <button
                         onClick={() => setUpstreamOpen(!upstreamOpen)}
-                        className="flex items-center gap-1 px-3 py-2.5 rounded-xl border border-border/40 bg-background/40 text-xs font-bold hover:bg-background/80 transition-all min-w-[90px] justify-between"
+                        className="flex items-center gap-1 px-3 py-2.5 rounded-xl border border-input bg-background/80 text-xs font-bold hover:bg-accent transition-all min-w-[90px] justify-between shadow-sm"
                     >
                         <span className="text-foreground/80 truncate max-w-[100px]">{upstream || t('playground.select_upstream')}</span>
                         <ChevronDown className="h-3 w-3 opacity-50" />
@@ -248,7 +282,7 @@ export function Playground() {
                     value={path}
                     onChange={(e) => setPath(e.target.value)}
                     placeholder="/v1/chat/completions"
-                    className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-background/50 border border-border/40 text-sm font-mono placeholder:text-muted-foreground/20 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-background border border-input text-sm font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
                 />
 
                 {/* Send Button */}
@@ -309,7 +343,7 @@ export function Playground() {
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
                             placeholder='{ "model": "gpt-4", "messages": [...] }'
-                            className="w-full h-[240px] px-4 py-3 rounded-xl bg-background border border-border/40 text-xs font-mono leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none custom-scrollbar transition-all"
+                            className="w-full h-[240px] px-4 py-3 rounded-xl bg-background border border-input text-xs font-mono leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none custom-scrollbar transition-all shadow-sm"
                             spellCheck={false}
                         />
                     </div>
@@ -326,14 +360,14 @@ export function Playground() {
                                         value={h.key}
                                         onChange={(e) => handleHeaderChange(h.id, 'key', e.target.value)}
                                         placeholder="Header Name"
-                                        className="w-[35%] sm:w-[30%] px-3 py-2 rounded-lg bg-background border border-border/40 text-xs font-mono font-bold placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                        className="w-[35%] sm:w-[30%] px-3 py-2 rounded-lg bg-background border border-input shadow-sm text-xs font-mono font-bold placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                     />
                                     <input
                                         type="text"
                                         value={h.value}
                                         onChange={(e) => handleHeaderChange(h.id, 'value', e.target.value)}
                                         placeholder="Value"
-                                        className="flex-1 px-3 py-2 rounded-lg bg-background border border-border/40 text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                        className="flex-1 px-3 py-2 rounded-lg bg-background border border-input shadow-sm text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                     />
                                     <button
                                         onClick={() => handleRemoveHeader(h.id)}
@@ -359,9 +393,9 @@ export function Playground() {
 
             {/* Response */}
             {(response || error || sending) && (
-                <div className="rounded-2xl border border-border/30 bg-card/30 backdrop-blur-sm overflow-hidden">
+                <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
                     {/* Response Header */}
-                    <div className="px-4 py-3 border-b border-border/20 flex items-center gap-3">
+                    <div className="px-4 py-3 border-b border-border/20 flex flex-wrap items-center gap-3">
                         <span className="text-xs font-black uppercase tracking-wider text-muted-foreground/60">
                             {t('playground.response')}
                         </span>
@@ -396,6 +430,19 @@ export function Playground() {
                                             </span>
                                         )}
                                     </span>
+                                )}
+                                {response.body_decoded && (
+                                    <Badge
+                                        variant="outline"
+                                        className="h-5 border-sky-500/30 bg-sky-500/5 px-1.5 text-[10px] font-bold text-sky-600 dark:text-sky-400"
+                                    >
+                                        {t('playground.body_decoded', {
+                                            encoding: (response.body_decoded_from || 'gzip').toUpperCase(),
+                                        })}
+                                    </Badge>
+                                )}
+                                {response.body && (
+                                    <ViewToggle value={responseViewMode} onChange={setResponseViewMode} />
                                 )}
                                 <div className="ml-auto">
                                     <Button
@@ -447,7 +494,11 @@ export function Playground() {
                     {/* Response Body */}
                     {response?.body && (
                         <div className="p-4 max-h-[600px] overflow-auto custom-scrollbar">
-                            <JsonViewer data={parsedResponseBody ?? response.body} />
+                            {responseViewMode === 'raw' ? (
+                                <RawBodyViewer text={response.body} />
+                            ) : (
+                                <JsonViewer data={parsedResponseBody ?? response.body} />
+                            )}
                         </div>
                     )}
 

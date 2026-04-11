@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ func (r *SQLiteRepository) migrate() error {
 	CREATE TABLE IF NOT EXISTS request_logs (
 		id TEXT PRIMARY KEY,
 		created_at DATETIME NOT NULL,
+		created_at_unix_ms INTEGER NOT NULL,
 		upstream TEXT NOT NULL,
 		target_url TEXT NOT NULL,
 		method TEXT NOT NULL,
@@ -101,7 +103,17 @@ func (r *SQLiteRepository) migrate() error {
 	if err := r.ensureLogColumn("response_body_ref", "response_body_ref TEXT"); err != nil {
 		return err
 	}
+	if err := r.ensureLogColumn("created_at_unix_ms", "created_at_unix_ms INTEGER DEFAULT 0"); err != nil {
+		return err
+	}
 	if err := r.ensureLogColumn("tag", "tag TEXT DEFAULT ''"); err != nil {
+		return err
+	}
+	// Index for unix timestamp based sort/filter.
+	if _, err := r.db.Exec("CREATE INDEX IF NOT EXISTS idx_logs_created_at_unix_ms ON request_logs(created_at_unix_ms DESC)"); err != nil {
+		return fmt.Errorf("create created_at_unix_ms index: %w", err)
+	}
+	if err := r.backfillCreatedAtUnixMS(); err != nil {
 		return err
 	}
 	// Index for tag filtering.
@@ -152,6 +164,123 @@ func (r *SQLiteRepository) hasColumn(table, colName string) (bool, error) {
 	return false, nil
 }
 
+func (r *SQLiteRepository) backfillCreatedAtUnixMS() error {
+	rows, err := r.db.Query("SELECT id, created_at FROM request_logs WHERE created_at_unix_ms IS NULL OR created_at_unix_ms <= 0")
+	if err != nil {
+		return fmt.Errorf("query missing created_at_unix_ms rows: %w", err)
+	}
+	defer rows.Close()
+
+	type updateRow struct {
+		id     string
+		unixMS int64
+	}
+	updates := make([]updateRow, 0)
+	for rows.Next() {
+		var id string
+		var createdAtRaw any
+		if err := rows.Scan(&id, &createdAtRaw); err != nil {
+			return fmt.Errorf("scan row for created_at_unix_ms backfill: %w", err)
+		}
+
+		createdAt, err := parseDBTime(createdAtRaw)
+		if err != nil {
+			return fmt.Errorf("parse created_at for row %s: %w", id, err)
+		}
+		updates = append(updates, updateRow{
+			id:     id,
+			unixMS: createdAt.UTC().UnixMilli(),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate rows for created_at_unix_ms backfill: %w", err)
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin created_at_unix_ms backfill tx: %w", err)
+	}
+
+	stmt, err := tx.Prepare("UPDATE request_logs SET created_at_unix_ms = ? WHERE id = ?")
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("prepare created_at_unix_ms backfill statement: %w", err)
+	}
+
+	for _, row := range updates {
+		if _, err := stmt.Exec(row.unixMS, row.id); err != nil {
+			_ = stmt.Close()
+			_ = tx.Rollback()
+			return fmt.Errorf("update created_at_unix_ms for row %s: %w", row.id, err)
+		}
+	}
+	if err := stmt.Close(); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("close created_at_unix_ms backfill statement: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit created_at_unix_ms backfill tx: %w", err)
+	}
+	return nil
+}
+
+func parseDBTime(v any) (time.Time, error) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, nil
+	case string:
+		return parseTimeString(t)
+	case []byte:
+		return parseTimeString(string(t))
+	case int64:
+		return time.UnixMilli(t), nil
+	case float64:
+		if math.IsNaN(t) || math.IsInf(t, 0) {
+			return time.Time{}, fmt.Errorf("invalid float timestamp: %v", t)
+		}
+		return time.UnixMilli(int64(t)), nil
+	default:
+		return time.Time{}, fmt.Errorf("unsupported time type %T", v)
+	}
+}
+
+func parseTimeString(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty time string")
+	}
+
+	zonedLayouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999 -0700",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05 -0700",
+	}
+	for _, layout := range zonedLayouts {
+		if tm, err := time.Parse(layout, s); err == nil {
+			return tm, nil
+		}
+	}
+
+	// Legacy rows without explicit timezone are interpreted in local timezone,
+	// matching historical behavior of writing time.Now() on the host.
+	localLayouts := []string{
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range localLayouts {
+		if tm, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return tm, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported time string format: %q", s)
+}
+
 // SaveLog inserts or updates a log entry (upsert by id).
 func (r *SQLiteRepository) SaveLog(log *RequestLog) error {
 	if log.ID == "" {
@@ -160,19 +289,21 @@ func (r *SQLiteRepository) SaveLog(log *RequestLog) error {
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
 	}
+	log.CreatedAt = log.CreatedAt.UTC()
 
 	reqHeaders, _ := json.Marshal(log.RequestHeaders)
 	respHeaders, _ := json.Marshal(log.ResponseHeaders)
 
 	query := `
 	INSERT INTO request_logs (
-		id, created_at, upstream, target_url, method, path, query,
+		id, created_at, created_at_unix_ms, upstream, target_url, method, path, query,
 		request_headers, request_body, request_body_ref, request_body_size,
 		status_code, response_headers, response_body, response_body_ref, response_body_size,
 		streaming, latency_ms, error, truncated, tag
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		created_at = excluded.created_at,
+		created_at_unix_ms = excluded.created_at_unix_ms,
 		upstream = excluded.upstream,
 		target_url = excluded.target_url,
 		method = excluded.method,
@@ -195,7 +326,7 @@ func (r *SQLiteRepository) SaveLog(log *RequestLog) error {
 	`
 
 	_, err := r.db.Exec(query,
-		log.ID, log.CreatedAt, log.Upstream, log.TargetURL, log.Method, log.Path, log.Query,
+		log.ID, log.CreatedAt, log.CreatedAt.UnixMilli(), log.Upstream, log.TargetURL, log.Method, log.Path, log.Query,
 		string(reqHeaders), log.RequestBody, log.RequestBodyRef, log.RequestBodySize,
 		log.StatusCode, string(respHeaders), log.ResponseBody, log.ResponseBodyRef, log.ResponseBodySize,
 		log.Streaming, log.Latency, log.Error, log.Truncated, log.Tag,
@@ -236,12 +367,12 @@ func (r *SQLiteRepository) ListLogs(filter LogFilter) ([]*RequestLog, int64, err
 		args = append(args, "%"+filter.Path+"%")
 	}
 	if filter.StartTime != nil {
-		conditions = append(conditions, "created_at >= ?")
-		args = append(args, *filter.StartTime)
+		conditions = append(conditions, "created_at_unix_ms >= ?")
+		args = append(args, filter.StartTime.UTC().UnixMilli())
 	}
 	if filter.EndTime != nil {
-		conditions = append(conditions, "created_at <= ?")
-		args = append(args, *filter.EndTime)
+		conditions = append(conditions, "created_at_unix_ms <= ?")
+		args = append(args, filter.EndTime.UTC().UnixMilli())
 	}
 	if filter.HasError != nil {
 		if *filter.HasError {
@@ -284,7 +415,7 @@ func (r *SQLiteRepository) ListLogs(filter LogFilter) ([]*RequestLog, int64, err
 		request_body_size, status_code, response_body_size,
 		streaming, latency_ms, error, truncated, tag
 	FROM request_logs %s
-	ORDER BY created_at DESC
+	ORDER BY created_at_unix_ms DESC, created_at DESC
 	LIMIT ? OFFSET ?
 	`, where)
 
@@ -311,7 +442,7 @@ func (r *SQLiteRepository) ListLogs(filter LogFilter) ([]*RequestLog, int64, err
 }
 
 func (r *SQLiteRepository) DeleteLogsBefore(before time.Time) (int64, error) {
-	result, err := r.db.Exec("DELETE FROM request_logs WHERE created_at < ?", before)
+	result, err := r.db.Exec("DELETE FROM request_logs WHERE created_at_unix_ms < ?", before.UTC().UnixMilli())
 	if err != nil {
 		return 0, err
 	}
@@ -327,8 +458,8 @@ func (r *SQLiteRepository) GetStats(since *time.Time) (*LogStats, error) {
 	where := ""
 	var args []interface{}
 	if since != nil {
-		where = "WHERE created_at >= ?"
-		args = append(args, *since)
+		where = "WHERE created_at_unix_ms >= ?"
+		args = append(args, since.UTC().UnixMilli())
 	}
 
 	query := fmt.Sprintf(`
@@ -442,6 +573,7 @@ func (r *SQLiteRepository) scanLogSummary(scanner interface{ Scan(...interface{}
 
 	log.Streaming = streaming == 1
 	log.Truncated = truncated == 1
+	log.CreatedAt = log.CreatedAt.UTC()
 
 	return &log, nil
 }
@@ -463,6 +595,7 @@ func (r *SQLiteRepository) scanLog(scanner interface{ Scan(...interface{}) error
 
 	log.Streaming = streaming == 1
 	log.Truncated = truncated == 1
+	log.CreatedAt = log.CreatedAt.UTC()
 
 	if reqHeaders != "" && reqHeaders != "null" {
 		log.RequestHeaders = unmarshalHeaders(reqHeaders)

@@ -1,5 +1,5 @@
 # --- 第一阶段：构建前端 ---
-FROM node:20-slim AS frontend-builder
+FROM node:24-slim AS frontend-builder
 WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci

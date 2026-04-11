@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/paopaoandlingyia/PrismCat/internal/config"
+	"github.com/paopaoandlingyia/PrismCat/internal/httpbody"
 	"github.com/paopaoandlingyia/PrismCat/internal/storage"
 )
 
@@ -489,11 +490,25 @@ func (h *Handler) handleReplay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	formattedBody := httpbody.FormatForDisplay(
+		resp.Header.Get("Content-Type"),
+		resp.Header.Get("Content-Encoding"),
+		respBody,
+		httpbody.FormatOptions{MaxOutputBytes: maxRespBody},
+	)
+	bodyDecoded := formattedBody.Decoded || resp.Uncompressed
+	bodyDecodedFrom := formattedBody.DecodedFrom
+	if bodyDecodedFrom == "" && resp.Uncompressed {
+		bodyDecodedFrom = "gzip"
+	}
+
 	h.jsonResponse(w, map[string]interface{}{
-		"status_code": resp.StatusCode,
-		"headers":     respHeaders,
-		"body":        string(respBody),
-		"truncated":   truncated,
+		"status_code":       resp.StatusCode,
+		"headers":           respHeaders,
+		"body":              formattedBody.Text,
+		"truncated":         truncated || formattedBody.Truncated,
+		"body_decoded":      bodyDecoded,
+		"body_decoded_from": bodyDecodedFrom,
 	})
 }
 
