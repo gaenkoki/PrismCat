@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+
 // API 响应类型
 export interface RequestLog {
     id: string
@@ -116,7 +118,7 @@ export async function deleteLogs(ids: string[]): Promise<number> {
         throw new Error(await resolveApiError(response, 'api.delete_logs_failed', 'Failed to delete logs'))
     }
 
-    const data = await response.json().catch(() => ({ deleted: ids.length }))
+    const data = await response.json()
     return Number(data.deleted || 0)
 }
 
@@ -161,13 +163,13 @@ export async function removeUpstream(name: string): Promise<void> {
 
 // 应用配置类型
 export interface AppConfig {
-  version: string
-  server: {
-    proxy_domains: string[]
-    enable_path_routing: boolean
-    path_routing_prefix: string
-  }
-  logging: {
+    version: string
+    server: {
+        proxy_domains: string[]
+        enable_path_routing: boolean
+        path_routing_prefix: string
+    }
+    logging: {
         max_request_body: number
         max_response_body: number
         sensitive_headers: string[]
@@ -183,13 +185,13 @@ export interface AppConfig {
 }
 
 export interface ConfigUpdate {
-  server?: {
-    enable_path_routing?: boolean
-    path_routing_prefix?: string
-  }
-  logging?: {
-    max_request_body?: number
-    max_response_body?: number
+    server?: {
+        enable_path_routing?: boolean
+        path_routing_prefix?: string
+    }
+    logging?: {
+        max_request_body?: number
+        max_response_body?: number
         sensitive_headers?: string[]
         early_request_body_snapshot?: boolean
         detach_body_over_bytes?: number
@@ -259,4 +261,3 @@ export async function sendReplay(req: ReplayRequest): Promise<ReplayResponse> {
     }
     return response.json()
 }
-import i18n from '@/i18n'

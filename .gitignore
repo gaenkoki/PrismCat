@@ -30,6 +30,7 @@ Thumbs.db
 .gemini/
 .agent/
 docs/
+check_keys.js
 
 .claude/
 .serena/

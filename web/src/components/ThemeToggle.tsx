@@ -1,23 +1,20 @@
 import { Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { useTranslation } from 'react-i18next'
 
 export function ThemeToggle() {
     const { t } = useTranslation()
-    const [isDark, setIsDark] = useState(true) // 默认暗色
-
-    useEffect(() => {
-        // 初始化
+    const [isDark, setIsDark] = useState(() => {
         const isDarkStored = localStorage.getItem('theme') !== 'light'
-        setIsDark(isDarkStored)
         if (isDarkStored) {
             document.documentElement.classList.add('dark')
         } else {
             document.documentElement.classList.remove('dark')
         }
-    }, [])
+        return isDarkStored
+    })
 
     const toggleTheme = () => {
         const newDark = !isDark
