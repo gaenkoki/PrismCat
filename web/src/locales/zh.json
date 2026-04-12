@@ -35,7 +35,9 @@
         "fetch_config_failed": "获取配置失败",
         "update_config_failed": "更新配置失败",
         "fetch_blob_failed": "获取 Blob 失败",
-        "replay_failed": "重放请求失败"
+        "replay_failed": "重放请求失败",
+        "delete_log_failed": "删除日志失败",
+        "delete_logs_failed": "批量删除日志失败"
     },
     "filters": {
         "edited": "已修改",

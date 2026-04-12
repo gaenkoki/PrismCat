@@ -100,8 +100,7 @@ export async function deleteLog(id: string): Promise<void> {
         method: 'DELETE',
     })
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(error.error || '删除日志失败')
+        throw new Error(await resolveApiError(response, 'api.delete_log_failed', 'Failed to delete log'))
     }
 }
 
@@ -114,8 +113,7 @@ export async function deleteLogs(ids: string[]): Promise<number> {
         body: JSON.stringify({ ids }),
     })
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(error.error || '批量删除日志失败')
+        throw new Error(await resolveApiError(response, 'api.delete_logs_failed', 'Failed to delete logs'))
     }
 
     const data = await response.json().catch(() => ({ deleted: ids.length }))

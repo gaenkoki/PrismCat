@@ -1,4 +1,4 @@
-import { cn, formatDate, formatLatency, formatSize, formatStructuredText, getStatusColor, getMethodColor } from '@/lib/utils'
+import { cn, formatDate, formatLatency, formatSize, getStatusColor, getMethodColor } from '@/lib/utils'
 import { Copy, Check, Zap, AlertTriangle, ChevronDown, ChevronUp, FileCode, ListTree, Globe, Layers, RotateCcw } from 'lucide-react'
 import { fetchBlob } from '@/lib/api'
 import type { RequestLog } from '@/lib/api'
@@ -325,7 +325,6 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                     className="h-7 gap-1.5 border-primary/20 bg-primary/5 px-2.5 text-[11px] font-semibold shadow-sm transition-all hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
                                     onClick={async () => {
                                         const navigateToPlayground = (body: string) => {
-                                            const { formatted } = formatStructuredText(body)
                                             onClose()
                                             navigate('/playground', {
                                                 state: {
@@ -334,7 +333,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                                         method: log.method,
                                                         path: log.path + (log.query ? '?' + log.query : ''),
                                                         headers: log.request_headers,
-                                                        body: formatted,
+                                                        body,
                                                     },
                                                 },
                                             })

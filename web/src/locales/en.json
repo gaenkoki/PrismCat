@@ -35,7 +35,9 @@
         "fetch_config_failed": "Failed to fetch config",
         "update_config_failed": "Failed to update config",
         "fetch_blob_failed": "Failed to fetch blob",
-        "replay_failed": "Failed to replay request"
+        "replay_failed": "Failed to replay request",
+        "delete_log_failed": "Failed to delete log",
+        "delete_logs_failed": "Failed to delete logs"
     },
     "filters": {
         "edited": "Edited",
