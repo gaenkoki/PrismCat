@@ -182,7 +182,7 @@ func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *
 		cfg:   cfg,
 		repo:  repo,
 		blobs: blobs,
-		proxy: proxy.New(cfg, repo),
+		proxy: proxy.New(cfg, repo, blobs),
 		api:   api.New(cfg, repo, blobs),
 	}
 }

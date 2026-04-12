@@ -25,11 +25,12 @@ import (
 type Proxy struct {
 	cfg    *config.Config
 	repo   storage.Repository
+	blobs  storage.BlobStore
 	client *http.Client
 }
 
 // New creates a new proxy instance.
-func New(cfg *config.Config, repo storage.Repository) *Proxy {
+func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *Proxy {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -44,8 +45,9 @@ func New(cfg *config.Config, repo storage.Repository) *Proxy {
 	}
 
 	return &Proxy{
-		cfg:  cfg,
-		repo: repo,
+		cfg:   cfg,
+		repo:  repo,
+		blobs: blobs,
 		client: &http.Client{
 			// Do not follow redirects automatically.
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -213,29 +215,38 @@ func (p *Proxy) applyRequestCapture(log *storage.RequestLog, reqCap *limitedCapt
 	if log == nil || reqCap == nil {
 		return
 	}
-	log.RequestBodySize = reqCap.Total()
+	reqSize, reqTruncated := reqCap.SnapshotMeta()
+	log.RequestBodySize = reqSize
 	contentType := firstHeaderValue(log.RequestHeaders, "Content-Type")
 	contentEncoding := firstHeaderValue(log.RequestHeaders, "Content-Encoding")
-	formatted := httpbody.FormatForDisplay(contentType, contentEncoding, reqCap.Bytes(), httpbody.FormatOptions{
-		MaxOutputBytes:  loggingCfg.MaxRequestBody,
-		TrimLargeBase64: !loggingCfg.StoreBase64,
-	})
-	log.RequestBody = formatted.Text
-	log.Truncated = log.Truncated || formatted.Truncated || reqCap.Truncated()
+	var formattedTruncated bool
+	log.RequestBody, formattedTruncated = formatCapturedBody(
+		reqCap,
+		contentType,
+		contentEncoding,
+		loggingCfg.MaxRequestBody,
+		!loggingCfg.StoreBase64,
+	)
+	log.Truncated = log.Truncated || formattedTruncated || reqTruncated
 }
 
 func (p *Proxy) applyResponseCapture(log *storage.RequestLog, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
 	if log == nil || respCap == nil {
 		return
 	}
+	respSize, respTruncated := respCap.SnapshotMeta()
+	log.ResponseBodySize = respSize
 	contentType := firstHeaderValue(log.ResponseHeaders, "Content-Type")
 	contentEncoding := firstHeaderValue(log.ResponseHeaders, "Content-Encoding")
-	formatted := httpbody.FormatForDisplay(contentType, contentEncoding, respCap.Bytes(), httpbody.FormatOptions{
-		MaxOutputBytes:  loggingCfg.MaxResponseBody,
-		TrimLargeBase64: !loggingCfg.StoreBase64,
-	})
-	log.ResponseBody = formatted.Text
-	log.Truncated = log.Truncated || formatted.Truncated || respCap.Truncated()
+	var formattedTruncated bool
+	log.ResponseBody, formattedTruncated = formatCapturedBody(
+		respCap,
+		contentType,
+		contentEncoding,
+		loggingCfg.MaxResponseBody,
+		!loggingCfg.StoreBase64,
+	)
+	log.Truncated = log.Truncated || formattedTruncated || respTruncated
 }
 
 func firstHeaderValue(headers map[string][]string, key string) string {
@@ -255,6 +266,7 @@ func firstHeaderValue(headers map[string][]string, key string) string {
 }
 
 func (p *Proxy) saveLogSnapshot(entry *storage.RequestLog) {
+	storage.DetachLargeBodies(entry, p.blobs, p.cfg)
 	if err := p.repo.SaveLog(entry); err != nil {
 		// Best-effort: avoid crashing the request path.
 		log.Printf("save log failed/dropped: %v", err)
@@ -503,27 +515,40 @@ func (c *limitedCapture) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (c *limitedCapture) Bytes() []byte {
+func (c *limitedCapture) View(fn func([]byte)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.buf) == 0 {
-		return nil
+	fn(c.buf)
+}
+
+func (c *limitedCapture) SnapshotMeta() (int64, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.total, c.truncated
+}
+
+func formatCapturedBody(
+	capture *limitedCapture,
+	contentType string,
+	contentEncoding string,
+	maxOutputBytes int64,
+	trimLargeBase64 bool,
+) (string, bool) {
+	if capture == nil {
+		return "", false
 	}
-	out := make([]byte, len(c.buf))
-	copy(out, c.buf)
-	return out
-}
 
-func (c *limitedCapture) Total() int64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.total
-}
-
-func (c *limitedCapture) Truncated() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.truncated
+	var text string
+	var truncated bool
+	capture.View(func(buf []byte) {
+		formatted := httpbody.FormatForDisplay(contentType, contentEncoding, buf, httpbody.FormatOptions{
+			MaxOutputBytes:  maxOutputBytes,
+			TrimLargeBase64: trimLargeBase64,
+		})
+		text = formatted.Text
+		truncated = formatted.Truncated
+	})
+	return text, truncated
 }
 
 func copyWithOptionalFlush(dst http.ResponseWriter, src io.Reader, capture io.Writer, flush bool) (int64, error) {

@@ -119,3 +119,32 @@ func TestDetachingRepositoryTruncateUTF8DoesNotSplitRunes(t *testing.T) {
 		t.Fatalf("RequestBody preview length = %d, want <= %d", len(saved.RequestBody), cfg.Logging.BodyPreviewBytes)
 	}
 }
+
+func TestDetachingRepositorySkipsAlreadyDetachedBodies(t *testing.T) {
+	inner := &memRepo{}
+	blobs := &memBlobStore{}
+
+	cfg := &config.Config{}
+	cfg.Logging.DetachBodyOverBytes = 8
+	cfg.Logging.BodyPreviewBytes = 4
+
+	entry := &RequestLog{
+		ID:           "id",
+		RequestBody:  "0123456789",
+		ResponseBody: "abcdefghij",
+	}
+	DetachLargeBodies(entry, blobs, cfg)
+
+	if blobs.puts != 2 {
+		t.Fatalf("pre-detach blob puts = %d, want 2", blobs.puts)
+	}
+
+	repo := NewDetachingRepository(inner, blobs, cfg)
+	if err := repo.SaveLog(entry); err != nil {
+		t.Fatalf("SaveLog failed: %v", err)
+	}
+
+	if blobs.puts != 2 {
+		t.Fatalf("blob puts after repository save = %d, want 2", blobs.puts)
+	}
+}
