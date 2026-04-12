@@ -115,7 +115,7 @@ export function LogFilters({
                     />
                     {isPathChanged && (
                         <Badge className="absolute right-2 top-2 h-6 px-1.5 text-[9px] font-black uppercase bg-primary/20 text-primary border-none">
-                            Edited
+                            {t('filters.edited')}
                         </Badge>
                     )}
                 </div>
@@ -259,7 +259,7 @@ export function LogFilters({
                     </span>
                     {total > 0 && (
                         <Badge variant="outline" className="text-[9px] border-border bg-background text-muted-foreground/75">
-                            {pageSize} / PAGE
+                            {t('filters.per_page', { size: pageSize })}
                         </Badge>
                     )}
                 </div>

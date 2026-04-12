@@ -2,7 +2,10 @@ import { Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useEffect, useState } from 'react'
 
+import { useTranslation } from 'react-i18next'
+
 export function ThemeToggle() {
+    const { t } = useTranslation()
     const [isDark, setIsDark] = useState(true) // 默认暗色
 
     useEffect(() => {
@@ -34,7 +37,7 @@ export function ThemeToggle() {
             size="icon"
             onClick={toggleTheme}
             className="rounded-full w-9 h-9 hover:bg-white/10"
-            title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+            title={isDark ? t('common.switch_to_light') : t('common.switch_to_dark')}
         >
             {isDark ? (
                 <Sun className="h-[1.2rem] w-[1.2rem] text-yellow-500" />

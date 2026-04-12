@@ -1,5 +1,7 @@
 {
     "common": {
+        "switch_to_light": "Switch to light mode",
+        "switch_to_dark": "Switch to dark mode",
         "loading": "Loading...",
         "error": "Error",
         "save": "Save",
@@ -23,7 +25,21 @@
         "load_upstreams_failed": "Failed to load upstreams",
         "load_log_detail_failed": "Failed to load log details"
     },
+    "api": {
+        "fetch_logs_failed": "Failed to fetch logs",
+        "fetch_log_failed": "Failed to fetch log details",
+        "fetch_stats_failed": "Failed to fetch stats",
+        "fetch_upstreams_failed": "Failed to fetch upstreams",
+        "add_upstream_failed": "Failed to add upstream",
+        "remove_upstream_failed": "Failed to remove upstream",
+        "fetch_config_failed": "Failed to fetch config",
+        "update_config_failed": "Failed to update config",
+        "fetch_blob_failed": "Failed to fetch blob",
+        "replay_failed": "Failed to replay request"
+    },
     "filters": {
+        "edited": "Edited",
+        "per_page": "{{size}} / page",
         "search_path": "Search path...",
         "all_upstreams": "All Upstreams",
         "all_methods": "All Methods",
@@ -32,13 +48,20 @@
         "total_count": "{{count}} total",
         "start_time": "Start Time",
         "end_time": "End Time",
+        "select_time": "Time Range",
+        "presets": "Presets",
         "select_start": "Select Start Time",
         "select_end": "Select End Time",
         "time_all": "All Time",
+        "time_last_1h": "Last 1h",
+        "time_last_24h": "Last 24h",
+        "time_last_7d": "Last 7d",
         "time_1h": "1h",
         "time_24h": "24h",
         "time_7d": "7d",
+        "time_today": "Today",
         "time_30d": "30d",
+        "custom_range": "Custom Range",
         "time_custom": "Custom Range",
         "time_now": "Now",
         "time_now_btn": "Now",
@@ -53,7 +76,8 @@
         "total_requests": "Total Requests",
         "error_rate": "Error Rate",
         "avg_latency": "Avg Latency",
-        "total_p95": "P95 Latency"
+        "total_p95": "P95 Latency",
+        "upstream_count": "Upstreams"
     },
     "log_table": {
         "time": "Time",
@@ -74,6 +98,7 @@
         "select_row": "Select log {{id}}"
     },
     "log_detail": {
+        "headers_count": "{{count}} keys",
         "title": "Request Details",
         "request": "Request",
         "response": "Response",
@@ -196,6 +221,13 @@
         "select_upstream": "Select upstream",
         "no_upstreams": "No upstreams configured",
         "to_send": "to send",
+        "request_failed": "Request failed",
+        "body_format_failed": "Current request body is not valid JSON and cannot be formatted",
+        "body_formatted": "Request body formatted",
+        "body_resize_hint": "Drag the bottom edge of the editor to resize it",
+        "format_body": "Format",
+        "header_name_placeholder": "Header Name",
+        "header_value_placeholder": "Value",
         "body_decoded": "Auto-decoded {{encoding}}",
         "empty_response": "Empty response body",
         "empty_state": "Configure your request and send it",

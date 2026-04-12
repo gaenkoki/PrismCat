@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { Send, Plus, Trash2, Loader2, Copy, Check, ChevronDown, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn, getStatusColor, formatSize, formatStructuredText, generateId } from '@/lib/utils'
+import { cn, getMethodColor, getStatusColor, formatSize, formatStructuredText, generateId } from '@/lib/utils'
 import { fetchUpstreams, sendReplay } from '@/lib/api'
 import type { Upstream, ReplayResponse } from '@/lib/api'
 import { JsonViewer } from '@/components/JsonViewer'
@@ -13,16 +13,6 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
-
-const METHOD_COLORS: Record<string, string> = {
-    GET: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-    POST: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
-    PUT: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-    PATCH: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
-    DELETE: 'bg-red-500/10 text-red-600 border-red-500/30',
-    HEAD: 'bg-purple-500/10 text-purple-600 border-purple-500/30',
-    OPTIONS: 'bg-gray-500/10 text-gray-600 border-gray-500/30',
-}
 
 interface HeaderEntry {
     key: string
@@ -126,12 +116,12 @@ export function Playground() {
 
         const result = formatStructuredText(body)
         if (result.kind !== 'json') {
-            toast.error(t('playground.body_format_failed', { defaultValue: '当前请求体不是有效 JSON，无法格式化' }))
+            toast.error(t('playground.body_format_failed'))
             return
         }
 
         setBody(result.formatted)
-        toast.success(t('playground.body_formatted', { defaultValue: '请求体已格式化' }))
+        toast.success(t('playground.body_formatted'))
     }, [body, t])
 
     const handleSend = useCallback(async () => {
@@ -162,11 +152,11 @@ export function Playground() {
             setResponse(replayResponse)
         } catch (err: any) {
             setElapsed(Math.round(performance.now() - startTime))
-            setError(err?.message || '请求失败')
+            setError(err?.message || t('playground.request_failed'))
         } finally {
             setSending(false)
         }
-    }, [upstream, method, path, headers, body])
+    }, [upstream, method, path, headers, body, t])
 
     useEffect(() => {
         const handler = (event: KeyboardEvent) => {
@@ -223,7 +213,7 @@ export function Playground() {
                         onClick={() => setMethodOpen((open) => !open)}
                         className={cn(
                             'flex min-w-[80px] items-center justify-between gap-1 rounded-xl border px-3 py-2.5 text-xs font-black uppercase tracking-wider transition-all',
-                            METHOD_COLORS[method] || METHOD_COLORS.GET
+                            getMethodColor(method, 'badge')
                         )}
                     >
                         {method}
@@ -358,7 +348,7 @@ export function Playground() {
                                         {t('playground.body')}
                                     </div>
                                     <p className="text-xs text-muted-foreground/70">
-                                        {t('playground.body_resize_hint', { defaultValue: '拖拽文本框底边可上下调节高度' })}
+                                        {t('playground.body_resize_hint')}
                                     </p>
                                 </div>
                                 <Button
@@ -370,7 +360,7 @@ export function Playground() {
                                     className="h-8 rounded-full border-border/60 bg-background/80 px-3.5 text-[11px] font-bold shadow-xs hover:bg-accent/70"
                                 >
                                     <Sparkles className="h-3.5 w-3.5" />
-                                    {t('playground.format_body', { defaultValue: '格式化' })}
+                                    {t('playground.format_body')}
                                 </Button>
                             </div>
                             <Textarea
@@ -411,14 +401,14 @@ export function Playground() {
                                             type="text"
                                             value={header.key}
                                             onChange={(event) => handleHeaderChange(header.id, 'key', event.target.value)}
-                                            placeholder="Header Name"
+                                            placeholder={t('playground.header_name_placeholder')}
                                             className="w-[35%] rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono font-bold shadow-xs transition-all placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-[30%]"
                                         />
                                         <input
                                             type="text"
                                             value={header.value}
                                             onChange={(event) => handleHeaderChange(header.id, 'value', event.target.value)}
-                                            placeholder="Value"
+                                            placeholder={t('playground.header_value_placeholder')}
                                             className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono shadow-xs transition-all placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
                                         />
                                         <button
@@ -453,7 +443,7 @@ export function Playground() {
                                     variant="outline"
                                     className={cn(
                                         'border-none text-xs font-black',
-                                        getStatusColor(response.status_code)
+                                        getStatusColor(response.status_code, 'badge')
                                     )}
                                 >
                                     {response.status_code}
@@ -468,7 +458,7 @@ export function Playground() {
                                         {formatSize(response.body.length)}
                                         {response.truncated && (
                                             <span className="ml-1 font-black text-amber-500">
-                                                (TRUNCATED)
+                                                ({t('log_detail.truncated_tag')})
                                             </span>
                                         )}
                                     </span>

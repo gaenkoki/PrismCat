@@ -1,5 +1,7 @@
 {
     "common": {
+        "switch_to_light": "切换到亮色模式",
+        "switch_to_dark": "切换到暗色模式",
         "loading": "加载中...",
         "error": "错误",
         "save": "保存",
@@ -23,7 +25,26 @@
         "load_upstreams_failed": "加载上游配置失败",
         "load_log_detail_failed": "加载日志详情失败"
     },
+    "api": {
+        "fetch_logs_failed": "获取日志列表失败",
+        "fetch_log_failed": "获取日志详情失败",
+        "fetch_stats_failed": "获取统计数据失败",
+        "fetch_upstreams_failed": "获取上游配置失败",
+        "add_upstream_failed": "添加上游失败",
+        "remove_upstream_failed": "删除上游失败",
+        "fetch_config_failed": "获取配置失败",
+        "update_config_failed": "更新配置失败",
+        "fetch_blob_failed": "获取 Blob 失败",
+        "replay_failed": "重放请求失败"
+    },
     "filters": {
+        "edited": "已修改",
+        "per_page": "{{size}} / 页",
+        "time_1h": "1 小时",
+        "time_24h": "24 小时",
+        "time_7d": "7 天",
+        "time_30d": "30 天",
+        "time_custom": "自定义范围",
         "search_path": "搜索路径...",
         "all_upstreams": "所有上游",
         "all_methods": "所有方法",
@@ -52,6 +73,7 @@
         "tag_placeholder": "按标签筛选..."
     },
     "stats": {
+        "upstream_count": "上游数量",
         "total_requests": "总请求数",
         "error_rate": "错误率",
         "avg_latency": "平均延迟",
@@ -69,6 +91,7 @@
         "tag": "标签"
     },
     "log_detail": {
+        "headers_count": "{{count}} 个键",
         "title": "请求详情",
         "request": "请求",
         "response": "响应",
@@ -179,6 +202,13 @@
         "store_base64_hint": "开启后将检测并存储请求/响应体中的 Base64 编码数据 (如图片)。禁用可多维度减少存储开销。"
     },
     "playground": {
+        "request_failed": "请求失败",
+        "body_format_failed": "当前请求体不是有效 JSON，无法格式化",
+        "body_formatted": "请求体已格式化",
+        "body_resize_hint": "拖拽文本框底边可上下调节高度",
+        "format_body": "格式化",
+        "header_name_placeholder": "请求头名称",
+        "header_value_placeholder": "值",
         "title": "Playground",
         "description": "发送请求到已配置的上游服务，或从日志中重放请求",
         "send": "发送",

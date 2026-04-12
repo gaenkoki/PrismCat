@@ -416,7 +416,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                 title={t('log_detail.request') + ' ' + t('log_detail.headers')}
                                 section="requestHeaders"
                                 icon={ListTree}
-                                extra={<span className="text-xs font-bold text-muted-foreground/70">{Object.keys(log.request_headers ?? {}).length} KEYS</span>}
+                                extra={<span className="text-xs font-bold text-muted-foreground/70">{t('log_detail.headers_count', { count: Object.keys(log.request_headers ?? {}).length })}</span>}
                             />
                             {expandedSections.requestHeaders && log.request_headers && (
                                 <div className={cn(contentCardClassName, "space-y-2 font-mono text-[11px] leading-relaxed")}>
@@ -548,7 +548,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                 title={t('log_detail.response') + ' ' + t('log_detail.headers')}
                                 section="responseHeaders"
                                 icon={ListTree}
-                                extra={<span className="text-xs font-bold text-muted-foreground/70">{Object.keys(log.response_headers ?? {}).length} KEYS</span>}
+                                extra={<span className="text-xs font-bold text-muted-foreground/70">{t('log_detail.headers_count', { count: Object.keys(log.response_headers ?? {}).length })}</span>}
                             />
                             {expandedSections.responseHeaders && log.response_headers && (
                                 <div className={cn(contentCardClassName, "space-y-2 font-mono text-[11px] leading-relaxed")}>
