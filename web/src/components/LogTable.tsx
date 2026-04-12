@@ -25,14 +25,6 @@ interface LogTableProps {
     selectedId?: string
 }
 
-function getStatusBadgeColor(code: number): string {
-    if (code >= 200 && code < 300) return 'bg-green-500/10 text-green-600 dark:text-green-400'
-    if (code >= 300 && code < 400) return 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
-    if (code >= 400 && code < 500) return 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
-    if (code >= 500) return 'bg-red-500/10 text-red-600 dark:text-red-400'
-    return 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
-}
-
 function MobileLogSkeleton() {
     return (
         <div className="space-y-3 md:hidden">
@@ -128,7 +120,7 @@ function MobileLogCard({
                         <span
                             className={cn(
                                 'inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black tracking-wider',
-                                getStatusBadgeColor(log.status_code)
+                                getStatusColor(log.status_code, 'badge')
                             )}
                         >
                             {log.status_code || '---'}

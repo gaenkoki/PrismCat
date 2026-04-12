@@ -60,6 +60,16 @@ export interface LogFilter {
 }
 
 // API 调用函数
+async function resolveApiError(response: Response, key: string, defaultValue: string): Promise<string> {
+    const payload = await response.json().catch(() => null)
+    const message = payload && typeof payload === 'object' && 'error' in payload ? payload.error : null
+
+    if (typeof message === 'string' && message.trim()) {
+        return message
+    }
+
+    return i18n.t(key, { defaultValue })
+}
 const API_BASE = '/api'
 
 export async function fetchLogs(filter: LogFilter = {}): Promise<LogListResponse> {
@@ -71,26 +81,34 @@ export async function fetchLogs(filter: LogFilter = {}): Promise<LogListResponse
     })
 
     const response = await fetch(`${API_BASE}/logs?${params}`)
-    if (!response.ok) throw new Error('获取日志列表失败')
+    if (!response.ok) {
+        throw new Error(await resolveApiError(response, 'api.fetch_logs_failed', 'Failed to fetch logs'))
+    }
     return response.json()
 }
 
 export async function fetchLog(id: string): Promise<RequestLog> {
     const response = await fetch(`${API_BASE}/logs/${id}`)
-    if (!response.ok) throw new Error('获取日志详情失败')
+    if (!response.ok) {
+        throw new Error(await resolveApiError(response, 'api.fetch_log_failed', 'Failed to fetch log details'))
+    }
     return response.json()
 }
 
 export async function fetchStats(since?: string): Promise<LogStats> {
     const params = since ? `?since=${since}` : ''
     const response = await fetch(`${API_BASE}/stats${params}`)
-    if (!response.ok) throw new Error('获取统计数据失败')
+    if (!response.ok) {
+        throw new Error(await resolveApiError(response, 'api.fetch_stats_failed', 'Failed to fetch stats'))
+    }
     return response.json()
 }
 
 export async function fetchUpstreams(): Promise<Upstream[]> {
     const response = await fetch(`${API_BASE}/upstreams`)
-    if (!response.ok) throw new Error('获取上游配置失败')
+    if (!response.ok) {
+        throw new Error(await resolveApiError(response, 'api.fetch_upstreams_failed', 'Failed to fetch upstreams'))
+    }
     return response.json()
 }
 
@@ -103,8 +121,7 @@ export async function addUpstream(name: string, target: string, timeout: number 
         body: JSON.stringify({ name, target, timeout }),
     })
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(error.error || '添加上游失败')
+        throw new Error(await resolveApiError(response, 'api.add_upstream_failed', 'Failed to add upstream'))
     }
 }
 
@@ -113,8 +130,7 @@ export async function removeUpstream(name: string): Promise<void> {
         method: 'DELETE',
     })
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(error.error || '删除上游失败')
+        throw new Error(await resolveApiError(response, 'api.remove_upstream_failed', 'Failed to remove upstream'))
     }
 }
 
@@ -162,7 +178,9 @@ export interface ConfigUpdate {
 
 export async function fetchConfig(): Promise<AppConfig> {
     const response = await fetch(`${API_BASE}/config`)
-    if (!response.ok) throw new Error('获取配置失败')
+    if (!response.ok) {
+        throw new Error(await resolveApiError(response, 'api.fetch_config_failed', 'Failed to fetch config'))
+    }
     return response.json()
 }
 
@@ -175,14 +193,15 @@ export async function updateConfig(update: ConfigUpdate): Promise<void> {
         body: JSON.stringify(update),
     })
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(error.error || '更新配置失败')
+        throw new Error(await resolveApiError(response, 'api.update_config_failed', 'Failed to update config'))
     }
 }
 
 export async function fetchBlob(ref: string): Promise<string> {
     const response = await fetch(`${API_BASE}/blobs/${encodeURIComponent(ref)}`)
-    if (!response.ok) throw new Error('获取 Blob 失败')
+    if (!response.ok) {
+        throw new Error(await resolveApiError(response, 'api.fetch_blob_failed', 'Failed to fetch blob'))
+    }
     return response.text()
 }
 
@@ -211,8 +230,8 @@ export async function sendReplay(req: ReplayRequest): Promise<ReplayResponse> {
         body: JSON.stringify(req),
     })
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(error.error || '重放请求失败')
+        throw new Error(await resolveApiError(response, 'api.replay_failed', 'Failed to replay request'))
     }
     return response.json()
 }
+import i18n from '@/i18n'

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { Send, Plus, Trash2, Loader2, Copy, Check, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn, getStatusColor, formatSize, formatStructuredText, generateId } from '@/lib/utils'
+import { cn, getMethodColor, getStatusColor, formatSize, formatStructuredText, generateId } from '@/lib/utils'
 import { fetchUpstreams, sendReplay } from '@/lib/api'
 import type { Upstream, ReplayResponse } from '@/lib/api'
 import { JsonViewer } from '@/components/JsonViewer'
@@ -12,16 +12,6 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
-
-const METHOD_COLORS: Record<string, string> = {
-    GET: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-    POST: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
-    PUT: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-    PATCH: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
-    DELETE: 'bg-red-500/10 text-red-600 border-red-500/30',
-    HEAD: 'bg-purple-500/10 text-purple-600 border-purple-500/30',
-    OPTIONS: 'bg-gray-500/10 text-gray-600 border-gray-500/30',
-}
 
 interface HeaderEntry {
     key: string
@@ -131,12 +121,12 @@ export function Playground() {
 
         const result = formatStructuredText(body)
         if (result.kind !== 'json') {
-            toast.error(t('playground.body_format_failed', { defaultValue: '\u5f53\u524d\u8bf7\u6c42\u4f53\u4e0d\u662f\u6709\u6548 JSON\uff0c\u65e0\u6cd5\u683c\u5f0f\u5316' }))
+            toast.error(t('playground.body_format_failed'))
             return
         }
 
         setBody(result.formatted)
-        toast.success(t('playground.body_formatted', { defaultValue: '\u8bf7\u6c42\u4f53\u5df2\u683c\u5f0f\u5316' }))
+        toast.success(t('playground.body_formatted'))
     }, [body, t])
 
     const handleSend = useCallback(async () => {
@@ -165,11 +155,11 @@ export function Playground() {
             setResponse(resp)
         } catch (err: any) {
             setElapsed(Math.round(performance.now() - startTime))
-            setError(err?.message || '请求失败')
+            setError(err?.message || t('playground.request_failed'))
         } finally {
             setSending(false)
         }
-    }, [upstream, method, path, headers, body])
+    }, [upstream, method, path, headers, body, t])
 
     const RawBodyViewer = ({ text }: { text: string }) => (
         <pre className="whitespace-pre-wrap break-all text-[11px] font-mono leading-relaxed text-foreground select-text">
@@ -229,7 +219,7 @@ export function Playground() {
                         onClick={() => setMethodOpen(!methodOpen)}
                         className={cn(
                             'flex items-center gap-1 px-3 py-2.5 rounded-xl border text-xs font-black uppercase tracking-wider transition-all min-w-[80px] justify-between',
-                            METHOD_COLORS[method] || METHOD_COLORS['GET']
+                            getMethodColor(method, 'badge')
                         )}
                     >
                         {method}
@@ -357,7 +347,7 @@ export function Playground() {
                     <div className="pt-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                                {t('playground.body_resize_hint', { defaultValue: '\u62d6\u62fd\u6587\u672c\u6846\u5e95\u8fb9\u53ef\u4e0a\u4e0b\u8c03\u8282\u9ad8\u5ea6' })}
+                                {t('playground.body_resize_hint')}
                             </span>
                             <Button
                                 type="button"
@@ -367,7 +357,7 @@ export function Playground() {
                                 disabled={!body.trim()}
                                 className="h-8 rounded-lg px-3 text-[11px] font-bold"
                             >
-                                {t('playground.format_body', { defaultValue: '\u683c\u5f0f\u5316' })}
+                                {t('playground.format_body')}
                             </Button>
                         </div>
                         <textarea
@@ -390,14 +380,14 @@ export function Playground() {
                                         type="text"
                                         value={h.key}
                                         onChange={(e) => handleHeaderChange(h.id, 'key', e.target.value)}
-                                        placeholder="Header Name"
+                                        placeholder={t('playground.header_name_placeholder')}
                                         className="w-[35%] sm:w-[30%] px-3 py-2 rounded-lg bg-background border border-input shadow-sm text-xs font-mono font-bold placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                     />
                                     <input
                                         type="text"
                                         value={h.value}
                                         onChange={(e) => handleHeaderChange(h.id, 'value', e.target.value)}
-                                        placeholder="Value"
+                                        placeholder={t('playground.header_value_placeholder')}
                                         className="flex-1 px-3 py-2 rounded-lg bg-background border border-input shadow-sm text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                     />
                                     <button
@@ -442,7 +432,7 @@ export function Playground() {
                                     variant="outline"
                                     className={cn(
                                         'font-black text-xs border-none',
-                                        getStatusColor(response.status_code)
+                                        getStatusColor(response.status_code, 'badge')
                                     )}
                                 >
                                     {response.status_code}
@@ -457,7 +447,7 @@ export function Playground() {
                                         {formatSize(response.body.length)}
                                         {response.truncated && (
                                             <span className="ml-1 text-amber-500 font-black">
-                                                (TRUNCATED)
+                                                ({t('log_detail.truncated_tag')})
                                             </span>
                                         )}
                                     </span>

@@ -55,7 +55,7 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
             isText: true,
         },
         {
-            title: t('log_table.upstream', '上游数量'),
+            title: t('stats.upstream_count'),
             value: Object.keys(stats?.by_upstream ?? {}).length,
             icon: Box,
             gradient: 'from-indigo-500 to-violet-500',

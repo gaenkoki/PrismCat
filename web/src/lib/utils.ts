@@ -40,24 +40,69 @@ export function formatSize(bytes: number): string {
 }
 
 // 状态码颜色
-export function getStatusColor(code: number): string {
-  if (code >= 200 && code < 300) return 'text-green-400'
-  if (code >= 300 && code < 400) return 'text-yellow-400'
-  if (code >= 400 && code < 500) return 'text-orange-400'
-  if (code >= 500) return 'text-red-400'
-  return 'text-gray-400'
+export function getStatusColor(code: number, variant: 'text' | 'badge' = 'text'): string {
+  if (code >= 200 && code < 300) {
+    return variant === 'badge'
+      ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+      : 'text-green-400'
+  }
+  if (code >= 300 && code < 400) {
+    return variant === 'badge'
+      ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+      : 'text-yellow-400'
+  }
+  if (code >= 400 && code < 500) {
+    return variant === 'badge'
+      ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+      : 'text-orange-400'
+  }
+  if (code >= 500) {
+    return variant === 'badge'
+      ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+      : 'text-red-400'
+  }
+  return variant === 'badge'
+    ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
+    : 'text-gray-400'
 }
 
 // 方法颜色
-export function getMethodColor(method: string): string {
-  const colors: Record<string, string> = {
-    GET: 'bg-blue-500/15 text-blue-500',
-    POST: 'bg-emerald-500/15 text-emerald-500',
-    PUT: 'bg-amber-500/15 text-amber-500',
-    DELETE: 'bg-rose-500/15 text-rose-500',
-    PATCH: 'bg-violet-500/15 text-violet-500',
+export function getMethodColor(method: string, variant: 'soft' | 'badge' = 'soft'): string {
+  const colors: Record<string, { soft: string; badge: string }> = {
+    GET: {
+      soft: 'bg-blue-500/15 text-blue-500',
+      badge: 'bg-blue-500/10 text-blue-600 border-blue-500/30 dark:text-blue-400',
+    },
+    POST: {
+      soft: 'bg-emerald-500/15 text-emerald-500',
+      badge: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400',
+    },
+    PUT: {
+      soft: 'bg-amber-500/15 text-amber-500',
+      badge: 'bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400',
+    },
+    PATCH: {
+      soft: 'bg-violet-500/15 text-violet-500',
+      badge: 'bg-violet-500/10 text-violet-600 border-violet-500/30 dark:text-violet-400',
+    },
+    DELETE: {
+      soft: 'bg-rose-500/15 text-rose-500',
+      badge: 'bg-rose-500/10 text-rose-600 border-rose-500/30 dark:text-rose-400',
+    },
+    HEAD: {
+      soft: 'bg-fuchsia-500/15 text-fuchsia-500',
+      badge: 'bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/30 dark:text-fuchsia-400',
+    },
+    OPTIONS: {
+      soft: 'bg-slate-500/15 text-slate-500',
+      badge: 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400',
+    },
   }
-  return colors[method.toUpperCase()] || 'bg-slate-500/15 text-slate-500'
+  const resolved = colors[method.toUpperCase()] ?? {
+    soft: 'bg-slate-500/15 text-slate-500',
+    badge: 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400',
+  }
+  return resolved[variant]
 }
 
 // JSON 语法高亮
