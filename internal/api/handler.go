@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -82,7 +84,8 @@ func (h *Handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 		deleted, err := h.repo.DeleteLogs(req.IDs)
 		if err != nil {
-			h.jsonError(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("DeleteLogs error: %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 
@@ -138,7 +141,8 @@ func (h *Handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, total, err := h.repo.ListLogs(filter)
 	if err != nil {
-		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("ListLogs error: %v", err)
+		h.jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -165,7 +169,8 @@ func (h *Handler) handleLogDetail(w http.ResponseWriter, r *http.Request) {
 				h.jsonError(w, "日志不存在", http.StatusNotFound)
 				return
 			}
-			h.jsonError(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("DeleteLog error: %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 
@@ -178,13 +183,13 @@ func (h *Handler) handleLogDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log, err := h.repo.GetLog(id)
+	entry, err := h.repo.GetLog(id)
 	if err != nil {
 		h.jsonError(w, "日志不存在", http.StatusNotFound)
 		return
 	}
 
-	h.jsonResponse(w, log)
+	h.jsonResponse(w, entry)
 }
 
 // handleStats 获取统计信息
@@ -203,7 +208,8 @@ func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	stats, err := h.repo.GetStats(since)
 	if err != nil {
-		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("GetStats error: %v", err)
+		h.jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -244,16 +250,23 @@ func (h *Handler) handleUpstreams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if err := validateUpstreamURL(req.Target); err != nil {
+			h.jsonError(w, "invalid upstream target: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		err := h.cfg.AddUpstream(req.Name, config.UpstreamConfig{
 			Target:  req.Target,
 			Timeout: req.Timeout,
 		})
 		if err != nil {
-			h.jsonError(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("AddUpstream error: %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		if err := h.cfg.Save(); err != nil {
-			h.jsonError(w, "保存配置失败: "+err.Error(), http.StatusInternalServerError)
+			log.Printf("Save config error (add upstream): %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		h.jsonResponse(w, map[string]string{"status": "ok"})
@@ -268,11 +281,13 @@ func (h *Handler) handleUpstreams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.cfg.RemoveUpstream(name); err != nil {
-			h.jsonError(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("RemoveUpstream error: %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		if err := h.cfg.Save(); err != nil {
-			h.jsonError(w, "保存配置失败: "+err.Error(), http.StatusInternalServerError)
+			log.Printf("Save config error (remove upstream): %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		h.jsonResponse(w, map[string]string{"status": "ok"})
@@ -395,7 +410,8 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 
 		// 保存配置
 		if err := h.cfg.Save(); err != nil {
-			h.jsonError(w, "保存配置失败: "+err.Error(), http.StatusInternalServerError)
+			log.Printf("Save config error (update config): %v", err)
+			h.jsonError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		h.jsonResponse(w, map[string]string{"status": "ok"})
@@ -430,7 +446,8 @@ func (h *Handler) handleBlob(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		h.jsonError(w, "读取 blob 失败: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("blob read error: %v", err)
+		h.jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -472,7 +489,8 @@ func (h *Handler) handleReplay(w http.ResponseWriter, r *http.Request) {
 
 	targetURL, err := url.Parse(upstream.Target)
 	if err != nil {
-		h.jsonError(w, "上游配置无效", http.StatusInternalServerError)
+		log.Printf("replay: invalid upstream URL: %v", err)
+		h.jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -499,19 +517,24 @@ func (h *Handler) handleReplay(w http.ResponseWriter, r *http.Request) {
 
 	upstreamReq, err := http.NewRequestWithContext(ctx, req.Method, fullURL, body)
 	if err != nil {
-		h.jsonError(w, "创建请求失败: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("replay: create request error: %v", err)
+		h.jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Set headers.
+	// Set headers, filtering out hop-by-hop and dangerous headers.
 	for k, v := range req.Headers {
+		if _, blocked := hopByHopHeaders[strings.ToLower(k)]; blocked {
+			continue
+		}
 		upstreamReq.Header.Set(k, v)
 	}
 	upstreamReq.Host = targetURL.Host
 
 	resp, err := h.client.Do(upstreamReq)
 	if err != nil {
-		h.jsonError(w, "上游请求失败: "+err.Error(), http.StatusBadGateway)
+		log.Printf("replay: upstream request error: %v", err)
+		h.jsonError(w, "upstream request failed", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
@@ -552,6 +575,65 @@ func (h *Handler) handleReplay(w http.ResponseWriter, r *http.Request) {
 		"body_decoded":      bodyDecoded,
 		"body_decoded_from": bodyDecodedFrom,
 	})
+}
+
+// validateUpstreamURL checks the target URL is safe (not pointing to internal/private networks).
+func validateUpstreamURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("scheme must be http or https, got %q", u.Scheme)
+	}
+
+	hostname := u.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("hostname is empty")
+	}
+
+	lower := strings.ToLower(hostname)
+	if lower == "localhost" || lower == "0.0.0.0" {
+		return fmt.Errorf("upstream target must not point to localhost")
+	}
+
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("upstream target must not point to a loopback/link-local address")
+		}
+
+		privateRanges := []struct {
+			network string
+		}{
+			{"10.0.0.0/8"},
+			{"172.16.0.0/12"},
+			{"192.168.0.0/16"},
+			{"169.254.0.0/16"},
+		}
+		for _, pr := range privateRanges {
+			_, cidr, _ := net.ParseCIDR(pr.network)
+			if cidr.Contains(ip) {
+				return fmt.Errorf("upstream target must not point to a private network address")
+			}
+		}
+	}
+
+	return nil
+}
+
+// hopByHopHeaders lists headers that must be stripped before forwarding replay requests.
+var hopByHopHeaders = map[string]struct{}{
+	"host":                {},
+	"connection":          {},
+	"transfer-encoding":   {},
+	"upgrade":             {},
+	"proxy-authorization": {},
+	"proxy-connection":    {},
+	"te":                  {},
+	"trailer":             {},
 }
 
 // jsonResponse 发送 JSON 响应

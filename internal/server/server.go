@@ -242,6 +242,10 @@ func (s *Server) Start() error {
 		currentServerCfg := s.cfg.ServerSnapshot()
 		applyCORS(w, r, currentServerCfg)
 
+		// Security headers for all responses.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return

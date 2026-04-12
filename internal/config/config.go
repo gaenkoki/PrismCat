@@ -209,11 +209,11 @@ func Load(path string) (*Config, error) {
 
 	// 确保目录存在
 	dbDir := filepath.Dir(c.Storage.Database)
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
+	if err := os.MkdirAll(dbDir, 0750); err != nil {
 		return nil, fmt.Errorf("创建数据库目录失败: %w", err)
 	}
 	if c.Storage.BlobStore == "fs" {
-		if err := os.MkdirAll(c.Storage.BlobDir, 0755); err != nil {
+		if err := os.MkdirAll(c.Storage.BlobDir, 0750); err != nil {
 			return nil, fmt.Errorf("创建 blob 目录失败: %w", err)
 		}
 	}
@@ -413,7 +413,7 @@ func (c *Config) Save() error {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 
-	if err := os.WriteFile(c.configPath, data, 0644); err != nil {
+	if err := os.WriteFile(c.configPath, data, 0600); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
 	return nil

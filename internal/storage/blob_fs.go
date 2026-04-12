@@ -24,7 +24,7 @@ func NewFileBlobStore(baseDir string) (*FileBlobStore, error) {
 	if baseDir == "" {
 		return nil, errors.New("blob base dir is empty")
 	}
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
+	if err := os.MkdirAll(baseDir, 0750); err != nil {
 		return nil, err
 	}
 	return &FileBlobStore{baseDir: baseDir}, nil
@@ -43,12 +43,12 @@ func (s *FileBlobStore) Put(ctx context.Context, data []byte) (string, error) {
 	}
 
 	dir := filepath.Dir(finalPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", err
 	}
 
 	tmpPath := filepath.Join(dir, ".tmp-"+hexHash+"-"+strconv.FormatInt(time.Now().UnixNano(), 10))
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0640); err != nil {
 		return "", err
 	}
 
@@ -73,6 +73,20 @@ func (s *FileBlobStore) Get(ctx context.Context, ref string) ([]byte, error) {
 		return nil, err
 	}
 	path := s.pathFor(hexHash)
+
+	// Prevent path traversal: resolved path must stay under baseDir.
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve blob path: %w", err)
+	}
+	absBase, err := filepath.Abs(s.baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve base dir: %w", err)
+	}
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) {
+		return nil, fmt.Errorf("blob path escapes base directory")
+	}
+
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
