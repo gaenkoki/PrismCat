@@ -19,6 +19,7 @@ type Config struct {
 	Upstreams map[string]UpstreamConfig `yaml:"upstreams"`
 	Logging   LoggingConfig             `yaml:"logging"`
 	Storage   StorageConfig             `yaml:"storage"`
+	KeepAlive KeepAliveConfig           `yaml:"keep_alive"`
 
 	configPath string // 配置文件路径
 	mu         sync.RWMutex
@@ -104,6 +105,11 @@ type StorageConfig struct {
 	AsyncBuffer int `yaml:"async_buffer"`
 }
 
+// KeepAliveConfig 保活配置（定时 ping 自身 /api/health 防止平台休眠）
+type KeepAliveConfig struct {
+	Enabled         bool `yaml:"enabled"`
+	IntervalSeconds int  `yaml:"interval_seconds"`
+}
 
 var (
 	cfg  *Config
@@ -145,6 +151,9 @@ func Load(path string) (*Config, error) {
 			AsyncBuffer: 4096,
 		},
 		Upstreams: make(map[string]UpstreamConfig),
+		KeepAlive: KeepAliveConfig{
+			IntervalSeconds: 300,
+		},
 	}
 
 	if err := yaml.Unmarshal(data, &c); err != nil {
@@ -371,6 +380,13 @@ func (c *Config) StorageSnapshot() StorageConfig {
 	return c.Storage
 }
 
+
+// KeepAliveSnapshot returns a copy of the current keep-alive config.
+func (c *Config) KeepAliveSnapshot() KeepAliveConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.KeepAlive
+}
 
 // ServerSnapshot returns a copy of the current server config safe for use
 // without holding locks.

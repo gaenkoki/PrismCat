@@ -145,6 +145,9 @@ export function Settings() {
 
     const [retentionDays, setRetentionDays] = useState(30)
 
+    const [keepAliveEnabled, setKeepAliveEnabled] = useState(false)
+    const [keepAliveInterval, setKeepAliveInterval] = useState(300)
+
     const domainSuffix = config?.server?.proxy_domains?.[0] || 'localhost'
     const previewUpstreamName = upstreams[0]?.name || 'openai'
 
@@ -196,6 +199,10 @@ export function Settings() {
             setRetentionDays(configData.storage.retention_days)
             setEnablePathRouting(configData.server.enable_path_routing)
             setPathRoutingPrefix(configData.server.path_routing_prefix || '/_proxy')
+            if (configData.keep_alive) {
+                setKeepAliveEnabled(configData.keep_alive.enabled)
+                setKeepAliveInterval(configData.keep_alive.interval_seconds || 300)
+            }
         } catch (err) {
             console.error('Failed to load settings:', err)
             toast.error(t('common.error'))
@@ -253,6 +260,10 @@ export function Settings() {
                 },
                 storage: {
                     retention_days: retentionDays,
+                },
+                keep_alive: {
+                    enabled: keepAliveEnabled,
+                    interval_seconds: keepAliveInterval,
                 },
             })
             toast.success(t('settings.config_saved'))
@@ -647,7 +658,35 @@ export function Settings() {
                                                 checked={storeBase64}
                                                 onCheckedChange={setStoreBase64}
                                             />
+
+                                            <ToggleSetting
+                                                label={t('settings.keep_alive')}
+                                                description={t('settings.keep_alive_hint')}
+                                                checked={keepAliveEnabled}
+                                                onCheckedChange={setKeepAliveEnabled}
+                                            />
                                         </div>
+
+                                        {keepAliveEnabled && (
+                                            <div className="sm:col-span-2">
+                                                <FieldBlock
+                                                    label={t('settings.keep_alive_interval')}
+                                                    hint={t('settings.keep_alive_interval_hint')}
+                                                    htmlFor="keep-alive-interval"
+                                                    unit="s"
+                                                >
+                                                    <Input
+                                                        id="keep-alive-interval"
+                                                        type="number"
+                                                        min="60"
+                                                        step="60"
+                                                        value={keepAliveInterval}
+                                                        onChange={e => setKeepAliveInterval(Number(e.target.value))}
+                                                        className="h-11 max-w-[200px] rounded-xl border-border/30 bg-background/50 text-sm shadow-sm transition-colors focus-visible:bg-background"
+                                                    />
+                                                </FieldBlock>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* 文本输入池 */}
