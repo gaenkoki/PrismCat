@@ -12,6 +12,7 @@
         "all": "All",
         "success": "Success",
         "copy": "Copy",
+        "copied": "Copied",
         "search": "Search",
         "items": "items",
         "confirm": "Confirm",
@@ -113,8 +114,8 @@
         "no_body": "No content",
         "truncated": "Truncated",
         "load_full": "Load Full Content",
-        "blob_loaded": "Remote Blob Loaded",
-        "blob_detached": "Detached to Blob Storage",
+        "blob_loaded": "Full copy loaded",
+        "blob_detached": "Remote storage",
         "open_raw": "Open Raw",
         "use_preview": "Use Preview",
         "view_raw": "Raw",
@@ -129,7 +130,8 @@
         "layout_standard": "Standard",
         "layout_wide": "Wide",
         "layout_full": "Full",
-        "detached_tag": "DETACHED",
+        "expand_all": "Expand all",
+        "collapse_all": "Collapse all",
         "truncated_tag": "TRUNCATED"
     },
     "json_viewer": {

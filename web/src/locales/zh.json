@@ -12,6 +12,7 @@
         "all": "所有",
         "success": "成功",
         "copy": "复制",
+        "copied": "已复制",
         "search": "搜索",
         "items": "项",
         "confirm": "确认",
@@ -113,8 +114,8 @@
         "no_body": "无内容",
         "truncated": "已截断",
         "load_full": "加载全量内容",
-        "blob_loaded": "已加载远程 Blob",
-        "blob_detached": "已脱离到 Blob 存储",
+        "blob_loaded": "完整副本已加载",
+        "blob_detached": "远程存储",
         "open_raw": "查看原文",
         "use_preview": "使用预览",
         "view_raw": "原始",
@@ -129,7 +130,8 @@
         "layout_standard": "标准",
         "layout_wide": "宽版",
         "layout_full": "全屏",
-        "detached_tag": "已分离",
+        "expand_all": "展开全部",
+        "collapse_all": "折叠全部",
         "truncated_tag": "已截断"
     },
     "json_viewer": {

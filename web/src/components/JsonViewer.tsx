@@ -78,12 +78,15 @@ function detectionFromMime(mimeType: string): Base64Detection {
 
 // ─── Components ──────────────────────────────────────────────────────
 
+export type JsonExpandMode = 'default' | 'all' | 'none';
+
 interface JsonViewerProps {
     data: any;
     initialExpanded?: boolean;
+    expandMode?: JsonExpandMode;
 }
 
-export function JsonViewer({ data, initialExpanded = true }: JsonViewerProps) {
+export function JsonViewer({ data, initialExpanded = true, expandMode = 'default' }: JsonViewerProps) {
     if (typeof data === 'string') return <SmartText text={data} />;
     if (typeof data !== 'object' || data === null) return <ValueNode value={data} />;
 
@@ -96,7 +99,7 @@ export function JsonViewer({ data, initialExpanded = true }: JsonViewerProps) {
 
     return (
         <div className="font-mono text-[11px] leading-relaxed select-text">
-            <CollapsibleNode data={data} label="" isRoot initialExpanded={rootInitialExpanded} depth={0} />
+            <CollapsibleNode data={data} label="" isRoot initialExpanded={rootInitialExpanded} depth={0} expandMode={expandMode} />
         </div>
     );
 }
@@ -238,7 +241,7 @@ function indent(depth: number): string {
     return '\u00A0\u00A0'.repeat(depth); // Non-breaking spaces × 2 per level
 }
 
-function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, initialExpanded = true, forceExpanded = false, suffix = null, depth = 0 }: {
+function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, initialExpanded = true, forceExpanded = false, suffix = null, depth = 0, expandMode = 'default' }: {
     data: any;
     label: string;
     isRoot?: boolean;
@@ -247,11 +250,14 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
     forceExpanded?: boolean;
     suffix?: ReactNode;
     depth?: number;
+    expandMode?: JsonExpandMode;
 }) {
     const { t } = useTranslation();
-    const [expanded, setExpanded] = useState(() =>
-        shouldAutoExpandNode({ data, depth, isRoot, initialExpanded, forceExpanded })
-    );
+    const [expanded, setExpanded] = useState(() => {
+        if (expandMode === 'all') return true;
+        if (expandMode === 'none') return false;
+        return shouldAutoExpandNode({ data, depth, isRoot, initialExpanded, forceExpanded });
+    });
     const isArray = Array.isArray(data);
     const entries = Object.entries(data);
     const isEmpty = entries.length === 0;
@@ -274,8 +280,10 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
     }, [data, isArray]);
 
     useEffect(() => {
-        setExpanded(shouldAutoExpandNode({ data, depth, isRoot, initialExpanded, forceExpanded }));
-    }, [data, depth, isRoot, initialExpanded, forceExpanded]);
+        if (expandMode === 'all') setExpanded(true);
+        else if (expandMode === 'none') setExpanded(false);
+        else setExpanded(shouldAutoExpandNode({ data, depth, isRoot, initialExpanded, forceExpanded }));
+    }, [data, depth, isRoot, initialExpanded, forceExpanded, expandMode]);
 
     const shouldForceExpandArrayChild = (idx: number, value: any) => {
         if (!isArray || !sampledArrayShapes || value === null || typeof value !== 'object') {
@@ -338,6 +346,7 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
                             forceExpanded={forceExpandChild}
                             suffix={comma}
                             depth={depth + 1}
+                            expandMode={expandMode}
                         />
                     );
                 }
