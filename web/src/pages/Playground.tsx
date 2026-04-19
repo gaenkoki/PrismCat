@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
+const PLAYGROUND_DRAFT_STORAGE_KEY = 'prismcat.playground.draft'
 
 interface HeaderEntry {
     key: string
@@ -23,18 +24,77 @@ interface HeaderEntry {
 type RequestTab = 'body' | 'headers'
 type ResponseViewMode = 'pretty' | 'raw'
 
+interface PlaygroundDraft {
+    upstream: string
+    method: string
+    path: string
+    headers: Array<Pick<HeaderEntry, 'key' | 'value'>>
+    body: string
+    activeTab: RequestTab
+}
+
+function createDefaultHeaders(): HeaderEntry[] {
+    return [{ key: 'Content-Type', value: 'application/json', id: generateId() }]
+}
+
+function createHeaderEntries(headers: PlaygroundDraft['headers']): HeaderEntry[] {
+    return headers.map((header) => ({
+        ...header,
+        id: generateId(),
+    }))
+}
+
+function normalizeMethod(value: unknown): string {
+    return typeof value === 'string' && HTTP_METHODS.includes(value as (typeof HTTP_METHODS)[number]) ? value : 'POST'
+}
+
+function normalizeActiveTab(value: unknown): RequestTab {
+    return value === 'headers' ? 'headers' : 'body'
+}
+
+function loadPlaygroundDraft(): PlaygroundDraft | null {
+    if (typeof window === 'undefined') return null
+
+    try {
+        const stored = window.sessionStorage.getItem(PLAYGROUND_DRAFT_STORAGE_KEY)
+        if (!stored) return null
+
+        const parsed = JSON.parse(stored) as Record<string, unknown> | null
+        if (!parsed || typeof parsed !== 'object') return null
+
+        const headers = Array.isArray(parsed.headers)
+            ? parsed.headers
+                .map((header) => ({
+                    key: header && typeof header === 'object' && typeof header.key === 'string' ? header.key : '',
+                    value: header && typeof header === 'object' && typeof header.value === 'string' ? header.value : '',
+                }))
+            : createDefaultHeaders().map(({ key, value }) => ({ key, value }))
+
+        return {
+            upstream: typeof parsed.upstream === 'string' ? parsed.upstream : '',
+            method: normalizeMethod(parsed.method),
+            path: typeof parsed.path === 'string' ? parsed.path : '',
+            headers,
+            body: typeof parsed.body === 'string' ? parsed.body : '',
+            activeTab: normalizeActiveTab(parsed.activeTab),
+        }
+    } catch {
+        window.sessionStorage.removeItem(PLAYGROUND_DRAFT_STORAGE_KEY)
+        return null
+    }
+}
+
 export function Playground() {
     const { t } = useTranslation()
     const location = useLocation()
+    const [initialDraft] = useState<PlaygroundDraft | null>(() => loadPlaygroundDraft())
 
     const [upstreams, setUpstreams] = useState<Upstream[]>([])
-    const [upstream, setUpstream] = useState('')
-    const [method, setMethod] = useState('POST')
-    const [path, setPath] = useState('')
-    const [headers, setHeaders] = useState<HeaderEntry[]>([
-        { key: 'Content-Type', value: 'application/json', id: generateId() },
-    ])
-    const [body, setBody] = useState('')
+    const [upstream, setUpstream] = useState(() => initialDraft?.upstream ?? '')
+    const [method, setMethod] = useState(() => initialDraft?.method ?? 'POST')
+    const [path, setPath] = useState(() => initialDraft?.path ?? '')
+    const [headers, setHeaders] = useState<HeaderEntry[]>(() => initialDraft ? createHeaderEntries(initialDraft.headers) : createDefaultHeaders())
+    const [body, setBody] = useState(() => initialDraft?.body ?? '')
 
     const [response, setResponse] = useState<ReplayResponse | null>(null)
     const [sending, setSending] = useState(false)
@@ -44,7 +104,7 @@ export function Playground() {
 
     const [methodOpen, setMethodOpen] = useState(false)
     const [upstreamOpen, setUpstreamOpen] = useState(false)
-    const [activeTab, setActiveTab] = useState<RequestTab>('body')
+    const [activeTab, setActiveTab] = useState<RequestTab>(() => initialDraft?.activeTab ?? 'body')
     const [responseViewMode, setResponseViewMode] = useState<ResponseViewMode>('pretty')
 
     useEffect(() => {
@@ -83,6 +143,26 @@ export function Playground() {
 
         window.history.replaceState({}, '')
     }, [location.state])
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+
+        try {
+            window.sessionStorage.setItem(
+                PLAYGROUND_DRAFT_STORAGE_KEY,
+                JSON.stringify({
+                    upstream,
+                    method,
+                    path,
+                    headers: headers.map(({ key, value }) => ({ key, value })),
+                    body,
+                    activeTab,
+                } satisfies PlaygroundDraft)
+            )
+        } catch {
+            // Ignore draft persistence failures (e.g. storage disabled/quota exceeded).
+        }
+    }, [upstream, method, path, headers, body, activeTab])
 
     const parsedResponseBody = useMemo(() => {
         if (responseViewMode !== 'pretty' || !response?.body) return null

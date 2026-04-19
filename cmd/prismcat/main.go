@@ -44,6 +44,14 @@ storage:
   blob_dir: "data/blobs"
 `
 
+func buildKeepAliveURL(serverCfg config.ServerConfig) string {
+	if externalURL := strings.TrimSpace(os.Getenv("RENDER_EXTERNAL_URL")); externalURL != "" {
+		return strings.TrimRight(externalURL, "/") + "/api/health"
+	}
+
+	return fmt.Sprintf("http://127.0.0.1:%d/api/health", serverCfg.Port)
+}
+
 func main() {
 	defaultPath := filepath.Join("data", "config.yaml")
 	configPath := flag.String("config", defaultPath, "配置文件路径")
@@ -192,8 +200,17 @@ func main() {
 				if !lastPing.IsZero() && time.Since(lastPing) < interval {
 					continue
 				}
-				pingURL := fmt.Sprintf("http://127.0.0.1:%d/api/health", cfg.ServerSnapshot().Port)
-				resp, err := client.Get(pingURL)
+				serverCfg := cfg.ServerSnapshot()
+				pingURL := buildKeepAliveURL(serverCfg)
+				req, err := http.NewRequest(http.MethodGet, pingURL, nil)
+				if err != nil {
+					log.Printf("淇濇椿 ping 璇锋眰鍒涘缓澶辫触: %v", err)
+					continue
+				}
+				if serverCfg.UIPassword != "" {
+					req.SetBasicAuth("keepalive", serverCfg.UIPassword)
+				}
+				resp, err := client.Do(req)
 				if err != nil {
 					log.Printf("保活 ping 失败: %v", err)
 				} else {
