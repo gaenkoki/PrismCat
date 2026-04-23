@@ -141,7 +141,7 @@ export function Settings() {
     const [detachBodyOver, setDetachBodyOver] = useState(256)
     const [bodyPreview, setBodyPreview] = useState(4096)
     const [storeBase64, setStoreBase64] = useState(true)
-    const [earlyRequestBodySnapshot, setEarlyRequestBodySnapshot] = useState(true)
+    const [earlyRequestBodySnapshot, setEarlyRequestBodySnapshot] = useState(false)
 
     const [retentionDays, setRetentionDays] = useState(30)
 

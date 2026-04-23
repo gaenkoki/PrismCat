@@ -305,7 +305,7 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
         return (
             <div>
                 <span className="text-muted-foreground/30 select-none">{pad}</span>
-                {showLabel && <span className="text-sky-600 dark:text-sky-400 font-semibold mr-1">"{label}": </span>}
+                {showLabel && <span className="text-violet-600 dark:text-violet-400 font-semibold mr-1">"{label}": </span>}
                 <span className="text-muted-foreground/60">{open}{close}</span>{suffix}
             </div>
         );
@@ -319,7 +319,7 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
                 onClick={() => setExpanded(!expanded)}
             >
                 <span className="text-muted-foreground/30 select-none">{pad}</span>
-                {showLabel && <span className="text-sky-600 dark:text-sky-400 font-semibold mr-1">"{label}": </span>}
+                {showLabel && <span className="text-violet-600 dark:text-violet-400 font-semibold mr-1">"{label}": </span>}
                 <span className="text-muted-foreground/60">{open}</span>
                 {!expanded && (
                     <>
@@ -353,7 +353,7 @@ function CollapsibleNode({ data, label, isRoot = false, isArrayItem = false, ini
                 return (
                     <div key={key} className="flex items-start">
                         <span className="text-muted-foreground/30 select-none shrink-0">{indent(depth + 1)}</span>
-                        {!isArray && <span className="text-sky-600 dark:text-sky-400 font-semibold mr-1 shrink-0">"{key}": </span>}
+                        {!isArray && <span className="text-violet-600 dark:text-violet-400 font-semibold mr-1 shrink-0">"{key}": </span>}
                         <span className="flex-1 min-w-0 break-all">
                             <ValueNode value={value} />{comma}
                         </span>

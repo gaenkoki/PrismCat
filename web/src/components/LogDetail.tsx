@@ -1,7 +1,7 @@
 import { cn, formatDate, formatLatency, formatSize, getStatusColor, getMethodColor } from '@/lib/utils'
 import { Copy, Check, Zap, AlertTriangle, ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown, FileCode, ListTree, Globe, Layers, RotateCcw } from 'lucide-react'
 import { fetchBlob } from '@/lib/api'
-import type { RequestLog } from '@/lib/api'
+import type { LiveLogEvent, RequestLog } from '@/lib/api'
 import { startTransition, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -65,6 +65,7 @@ function getInitialPanelWidthMode(): PanelWidthMode {
 export function LogDetail({ log, loading, onClose }: LogDetailProps) {
     const { t, i18n } = useTranslation()
     const navigate = useNavigate()
+    const [liveLog, setLiveLog] = useState<RequestLog | null>(null)
     const [copiedField, setCopiedField] = useState<string | null>(null)
     const [fullRequestBody, setFullRequestBody] = useState<string | null>(null)
     const [fullResponseBody, setFullResponseBody] = useState<string | null>(null)
@@ -79,8 +80,10 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
     const [requestExpandMode, setRequestExpandMode] = useState<JsonExpandMode>('default')
     const [responseExpandMode, setResponseExpandMode] = useState<JsonExpandMode>('default')
     const [panelWidthMode, setPanelWidthMode] = useState<PanelWidthMode>(() => getInitialPanelWidthMode())
+    const displayLog = liveLog ?? log
 
     useEffect(() => {
+        setLiveLog(null)
         setFullRequestBody(null)
         setFullResponseBody(null)
         setBlobError(null)
@@ -97,8 +100,68 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
         window.localStorage.setItem(logDetailWidthStorageKey, panelWidthMode)
     }, [panelWidthMode])
 
-    const effectiveRequestBody = fullRequestBody ?? log?.request_body ?? ''
-    const effectiveResponseBody = fullResponseBody ?? log?.response_body ?? ''
+    useEffect(() => {
+        if (!log || !shouldSubscribeLive(log)) {
+            setLiveLog(null)
+            return
+        }
+
+        const source = new EventSource(`/api/logs/${log.id}/live`)
+        const handleEvent = (event: MessageEvent<string>) => {
+            const next = parseLiveEvent(event)
+            if (!next) return
+
+            if (next.type === 'snapshot' && next.log) {
+                startTransition(() => {
+                    setLiveLog(next.log ?? null)
+                })
+                return
+            }
+
+            if (next.type === 'response_chunk') {
+                startTransition(() => {
+                    setLiveLog((current) => {
+                        const base = current ?? log
+                        if (!base) return current
+
+                        return {
+                            ...base,
+                            response_body: `${base.response_body ?? ''}${next.chunk ?? ''}`,
+                            response_body_size: base.response_body_size + (next.size_delta ?? 0),
+                        }
+                    })
+                })
+                return
+            }
+
+            if (next.type === 'completed' && next.log) {
+                startTransition(() => {
+                    setLiveLog(next.log ?? null)
+                })
+                source.close()
+            }
+        }
+
+        source.addEventListener('snapshot', handleEvent as EventListener)
+        source.addEventListener('response_chunk', handleEvent as EventListener)
+        source.addEventListener('completed', handleEvent as EventListener)
+        source.onerror = () => {
+            source.close()
+        }
+
+        return () => {
+            source.close()
+        }
+    }, [log])
+
+    useEffect(() => {
+        if (displayLog?.streaming && responseViewMode === 'pretty') {
+            setResponseViewMode('raw')
+        }
+    }, [displayLog?.streaming, responseViewMode])
+
+    const effectiveRequestBody = fullRequestBody ?? displayLog?.request_body ?? ''
+    const effectiveResponseBody = fullResponseBody ?? displayLog?.response_body ?? ''
     const shouldInspectRequestBody = expandedSections.requestBody && requestViewMode === 'pretty' && Boolean(effectiveRequestBody)
     const shouldInspectResponseBody = expandedSections.responseBody && Boolean(effectiveResponseBody)
 
@@ -121,9 +184,9 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
     }, [shouldInspectResponseBody, responseViewMode, effectiveResponseBody])
 
     const mergedResponse = useMemo(() => {
-        if (!shouldInspectResponseBody || !log?.streaming || responseViewMode !== 'merged') return null
+        if (!shouldInspectResponseBody || !displayLog?.streaming || responseViewMode !== 'merged') return null
         return mergeStreamBody(effectiveResponseBody)
-    }, [shouldInspectResponseBody, log?.streaming, responseViewMode, effectiveResponseBody])
+    }, [shouldInspectResponseBody, displayLog?.streaming, responseViewMode, effectiveResponseBody])
 
     const requestBodyCopyText = useMemo(
         () => formatCopyPayload(parsedRequestBody ?? effectiveRequestBody),
@@ -166,7 +229,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
         }
     }
 
-    if (!log) return null
+    if (!displayLog) return null
 
     const panelWidthOptions: Array<{ value: PanelWidthMode; label: string }> = [
         { value: 'standard', label: t('log_detail.layout_standard', 'Standard') },
@@ -321,26 +384,26 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                 <SheetHeader className="border-b border-border/60 bg-card px-6 py-5">
                     <div className="flex flex-wrap items-center gap-3">
                         <div
-                            className={cn(
-                                "w-14 py-0.5 rounded-[3px] text-[10px] text-center uppercase font-bold border",
-                                getMethodColor(log.method)
-                            )}
+                                className={cn(
+                                    "w-14 py-0.5 rounded-[3px] text-[10px] text-center uppercase font-bold border",
+                                    getMethodColor(displayLog.method)
+                                )}
                         >
-                            {log.method}
+                            {displayLog.method}
                         </div>
                         <SheetTitle className={cn(
                             "font-mono text-xl font-black tracking-tighter",
-                            getStatusColor(log.status_code)
+                            getStatusColor(displayLog.status_code)
                         )}>
-                            {log.status_code || '---'}
+                            {displayLog.status_code || '---'}
                         </SheetTitle>
-                        {log.streaming && (
+                        {displayLog.streaming && (
                             <Badge variant="secondary" className="border-none bg-primary/10 text-primary font-bold text-[10px] animate-pulse">
                                 <Zap className="mr-1 h-3 w-3 fill-current" />
                                 {t('log_detail.streaming', 'STREAMING')}
                             </Badge>
                         )}
-                        {log.error && (
+                        {displayLog.error && (
                             <Badge variant="destructive" className="border-none bg-red-500/10 text-red-500 font-bold text-[10px]">
                                 <AlertTriangle className="mr-1 h-3 w-3" />
                                 {t('common.error', 'ERROR')}
@@ -371,10 +434,10 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                             navigate('/playground', {
                                                 state: {
                                                     replay: {
-                                                        upstream: log.upstream,
-                                                        method: log.method,
-                                                        path: log.path + (log.query ? '?' + log.query : ''),
-                                                        headers: log.request_headers,
+                                                        upstream: displayLog.upstream,
+                                                        method: displayLog.method,
+                                                        path: displayLog.path + (displayLog.query ? '?' + displayLog.query : ''),
+                                                        headers: displayLog.request_headers,
                                                         body,
                                                     },
                                                 },
@@ -382,9 +445,9 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                         }
 
                                         // If blob ref exists and not yet loaded, fetch full body first
-                                        if (log.request_body_ref && !fullRequestBody) {
+                                        if (displayLog.request_body_ref && !fullRequestBody) {
                                             try {
-                                                const full = await fetchBlob(log.request_body_ref)
+                                                const full = await fetchBlob(displayLog.request_body_ref)
                                                 navigateToPlayground(full)
                                             } catch {
                                                 // Fallback to preview if blob fetch fails
@@ -408,10 +471,10 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                     {/* 基本信息网格 */}
                     <div className="grid grid-cols-2 gap-6 rounded-2xl border border-border/60 bg-card p-5 sm:grid-cols-4">
                         {[
-                            { label: t('log_table.upstream'), value: log.upstream, mono: false },
-                            { label: t('log_table.latency'), value: formatLatency(log.latency_ms), mono: true },
-                            { label: t('log_table.time'), value: formatDate(log.created_at, i18n.language), mono: false },
-                            { label: 'ID', value: log.id.substring(0, 8) + '...', mono: true, full: log.id }
+                            { label: t('log_table.upstream'), value: displayLog.upstream, mono: false },
+                            { label: t('log_table.latency'), value: formatLatency(displayLog.latency_ms), mono: true },
+                            { label: t('log_table.time'), value: formatDate(displayLog.created_at, i18n.language), mono: false },
+                            { label: 'ID', value: displayLog.id.substring(0, 8) + '...', mono: true, full: displayLog.id }
                         ].map((item, idx) => (
                             <div key={idx} className="space-y-1">
                                 <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{item.label}</div>
@@ -430,20 +493,20 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                         <SectionHeader title={t('log_detail.url')} section="url" icon={Globe} />
                         {expandedSections.url && (
                             <div className={cn(contentCardClassName, "group flex items-center gap-2 transition-colors hover:bg-muted")}>
-                                <code className="flex-1 text-xs font-mono break-all leading-relaxed text-foreground">{log.target_url}</code>
-                                <CopyButton text={log.target_url} field="url" />
+                                <code className="flex-1 text-xs font-mono break-all leading-relaxed text-foreground">{displayLog.target_url}</code>
+                                <CopyButton text={displayLog.target_url} field="url" />
                             </div>
                         )}
                     </div>
 
                     {/* 错误详情 */}
-                    {log.error && (
+                    {displayLog.error && (
                         <div className="overflow-hidden rounded-2xl border border-red-500/20 bg-red-500/5 p-4">
                             <div className="mb-3 flex items-center gap-2 text-red-500 font-bold text-xs uppercase tracking-wider">
                                 <AlertTriangle className="h-4 w-4" />
                                 {t('common.error')}
                             </div>
-                            <pre className="text-xs text-red-600 dark:text-red-400 font-mono whitespace-pre-wrap leading-relaxed">{log.error}</pre>
+                            <pre className="text-xs text-red-600 dark:text-red-400 font-mono whitespace-pre-wrap leading-relaxed">{displayLog.error}</pre>
                         </div>
                     )}
 
@@ -457,11 +520,11 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                 title={t('log_detail.request') + ' ' + t('log_detail.headers')}
                                 section="requestHeaders"
                                 icon={ListTree}
-                                extra={<span className="text-xs font-bold text-muted-foreground/70">{t('log_detail.headers_count', { count: Object.keys(log.request_headers ?? {}).length })}</span>}
+                                extra={<span className="text-xs font-bold text-muted-foreground/70">{t('log_detail.headers_count', { count: Object.keys(displayLog.request_headers ?? {}).length })}</span>}
                             />
-                            {expandedSections.requestHeaders && log.request_headers && (
+                            {expandedSections.requestHeaders && displayLog.request_headers && (
                                 <div className={cn(contentCardClassName, "space-y-2 font-mono text-[11px] leading-relaxed")}>
-                                    {Object.entries(log.request_headers).map(([key, vv]) => (
+                                    {Object.entries(displayLog.request_headers).map(([key, vv]) => (
                                         <div key={key} className="flex flex-col sm:flex-row sm:gap-2 group/line">
                                             <span className="text-primary shrink-0 font-bold">{key}:</span>
                                             <div className="flex flex-col">
@@ -482,8 +545,8 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                 icon={FileCode}
                                 extra={
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-muted-foreground">{formatSize(log.request_body_size)}</span>
-                                        {log.truncated && (
+                                        <span className="text-xs font-bold text-muted-foreground">{formatSize(displayLog.request_body_size)}</span>
+                                        {displayLog.truncated && (
                                             <Badge variant="outline" className="h-5 text-[11px] border-yellow-500/40 text-yellow-600 dark:text-yellow-500 bg-yellow-500/5 px-1.5 font-semibold">
                                                 {t('log_detail.truncated_tag', 'TRUNCATED')}
                                             </Badge>
@@ -496,13 +559,13 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                             />
                             {expandedSections.requestBody && (
                                 <div className="space-y-3">
-                                    {log.request_body_ref && (
+                                    {displayLog.request_body_ref && (
                                         <BlobPanel
-                                            blobRef={log.request_body_ref}
+                                            blobRef={displayLog.request_body_ref}
                                             isLoaded={!!fullRequestBody}
                                             loading={blobLoading.request}
                                             error={blobError}
-                                            onLoad={() => loadBlob('request', log.request_body_ref!)}
+                                            onLoad={() => loadBlob('request', displayLog.request_body_ref!)}
                                             onUsePreview={() => setFullRequestBody(null)}
                                         />
                                     )}
@@ -553,11 +616,11 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                 title={t('log_detail.response') + ' ' + t('log_detail.headers')}
                                 section="responseHeaders"
                                 icon={ListTree}
-                                extra={<span className="text-xs font-bold text-muted-foreground/70">{t('log_detail.headers_count', { count: Object.keys(log.response_headers ?? {}).length })}</span>}
+                                extra={<span className="text-xs font-bold text-muted-foreground/70">{t('log_detail.headers_count', { count: Object.keys(displayLog.response_headers ?? {}).length })}</span>}
                             />
-                            {expandedSections.responseHeaders && log.response_headers && (
+                            {expandedSections.responseHeaders && displayLog.response_headers && (
                                 <div className={cn(contentCardClassName, "space-y-2 font-mono text-[11px] leading-relaxed")}>
-                                    {Object.entries(log.response_headers).map(([key, vv]) => (
+                                    {Object.entries(displayLog.response_headers).map(([key, vv]) => (
                                         <div key={key} className="flex flex-col sm:flex-row sm:gap-2 group/line">
                                             <span className="text-green-600 dark:text-green-400 shrink-0 font-bold">{key}:</span>
                                             <div className="flex flex-col">
@@ -578,8 +641,8 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                 icon={FileCode}
                                 extra={
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-muted-foreground">{formatSize(log.response_body_size)}</span>
-                                        {log.truncated && (
+                                        <span className="text-xs font-bold text-muted-foreground">{formatSize(displayLog.response_body_size)}</span>
+                                        {displayLog.truncated && (
                                             <Badge variant="outline" className="h-5 text-[11px] border-yellow-500/40 text-yellow-600 dark:text-yellow-500 bg-yellow-500/5 px-1.5 font-semibold">
                                                 {t('log_detail.truncated_tag', 'TRUNCATED')}
                                             </Badge>
@@ -592,7 +655,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                             />
                             {expandedSections.responseBody && (
                                 <div className="space-y-3">
-                                    {log.streaming && responseViewMode === 'merged' && mergedResponse && (
+                                    {displayLog.streaming && responseViewMode === 'merged' && mergedResponse && (
                                         <div className="flex items-center gap-1.5 px-1 text-[11px] font-mono text-muted-foreground">
                                             <Layers className="h-3 w-3 shrink-0" />
                                             <span>
@@ -605,13 +668,13 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                         </div>
                                     )}
 
-                                    {log.response_body_ref && (
+                                    {displayLog.response_body_ref && (
                                         <BlobPanel
-                                            blobRef={log.response_body_ref}
+                                            blobRef={displayLog.response_body_ref}
                                             isLoaded={!!fullResponseBody}
                                             loading={blobLoading.response}
                                             error={blobError}
-                                            onLoad={() => loadBlob('response', log.response_body_ref!)}
+                                            onLoad={() => loadBlob('response', displayLog.response_body_ref!)}
                                             onUsePreview={() => setFullResponseBody(null)}
                                         />
                                     )}
@@ -621,7 +684,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                             <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
                                                 <ViewToggle
                                                     value={responseViewMode}
-                                                    options={log.streaming
+                                                    options={displayLog.streaming
                                                         ? [
                                                             { value: 'raw', label: t('log_detail.view_raw', 'Raw') },
                                                             { value: 'merged', label: t('log_detail.stream_merged', 'Merged') },
@@ -677,4 +740,18 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
     )
 }
 
+function shouldSubscribeLive(log: RequestLog): boolean {
+    return log.latency_ms === 0 && !log.error
+}
 
+function parseLiveEvent(event: MessageEvent<string>): LiveLogEvent | null {
+    try {
+        const payload = JSON.parse(event.data) as LiveLogEvent
+        if (!payload || typeof payload !== 'object' || !('type' in payload)) {
+            return null
+        }
+        return payload
+    } catch {
+        return null
+    }
+}

@@ -25,6 +25,21 @@ export interface RequestLog {
     tag?: string
 }
 
+export type LiveLogEvent =
+    | {
+        type: 'snapshot'
+        log?: RequestLog
+    }
+    | {
+        type: 'response_chunk'
+        chunk?: string
+        size_delta?: number
+    }
+    | {
+        type: 'completed'
+        log?: RequestLog
+    }
+
 export interface LogListResponse {
     logs: RequestLog[]
     total: number
