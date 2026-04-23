@@ -18,6 +18,7 @@ import (
 
 	"github.com/paopaoandlingyia/PrismCat/internal/config"
 	"github.com/paopaoandlingyia/PrismCat/internal/httpbody"
+	"github.com/paopaoandlingyia/PrismCat/internal/live"
 	"github.com/paopaoandlingyia/PrismCat/internal/storage"
 )
 
@@ -25,12 +26,12 @@ import (
 type Proxy struct {
 	cfg    *config.Config
 	repo   storage.Repository
-	blobs  storage.BlobStore
+	live   *live.Registry
 	client *http.Client
 }
 
 // New creates a new proxy instance.
-func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *Proxy {
+func New(cfg *config.Config, repo storage.Repository, liveRegistry *live.Registry) *Proxy {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -45,9 +46,9 @@ func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *
 	}
 
 	return &Proxy{
-		cfg:   cfg,
-		repo:  repo,
-		blobs: blobs,
+		cfg:  cfg,
+		repo: repo,
+		live: liveRegistry,
 		client: &http.Client{
 			// Do not follow redirects automatically.
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -101,6 +102,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	logMu.Lock()
 	p.saveLogSnapshot(logEntry)
+	p.publishInitialLive(logEntry)
 	logMu.Unlock()
 
 	// Per-request timeout: do NOT mutate a shared http.Client timeout.
@@ -131,8 +133,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 
 				logMu.Lock()
-				p.applyRequestCapture(logEntry, reqCapture, loggingCfg)
+				p.applyRequestCapture(logEntry, reqCapture)
 				p.saveLogSnapshot(logEntry)
+				p.publishRequestReady(logEntry)
 				logMu.Unlock()
 			}()
 		} else {
@@ -144,7 +147,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logMu.Lock()
 		logEntry.Error = fmt.Sprintf("create upstream request: %v", err)
-		p.finalizeAndSaveLog(logEntry, startTime, reqCapture, nil, loggingCfg)
+		p.finalizeAndSaveLog(logEntry, startTime, reqCapture, nil)
+		p.completeLive(logEntry)
 		logMu.Unlock()
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return
@@ -160,7 +164,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logMu.Lock()
 		logEntry.Error = fmt.Sprintf("upstream request failed: %v", err)
-		p.finalizeAndSaveLog(logEntry, startTime, reqCapture, nil, loggingCfg)
+		p.finalizeAndSaveLog(logEntry, startTime, reqCapture, nil)
+		p.completeLive(logEntry)
 		logMu.Unlock()
 		http.Error(w, fmt.Sprintf("upstream error: %v", err), http.StatusBadGateway)
 		return
@@ -171,6 +176,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEntry.StatusCode = resp.StatusCode
 	logEntry.ResponseHeaders = p.headerToMap(resp.Header)
 	logEntry.Streaming = isStreaming(resp.Header)
+	p.publishHeaders(logEntry)
 	logMu.Unlock()
 
 	// Forward response headers and status code.
@@ -179,14 +185,21 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Forward response body while capturing a bounded preview for logging.
 	respCapture := newLimitedCapture(loggingCfg.MaxResponseBody)
-	copied, copyErr := copyWithOptionalFlush(w, resp.Body, respCapture, logEntry.Streaming)
+	copied, copyErr := copyWithOptionalFlush(
+		w,
+		resp.Body,
+		respCapture,
+		logEntry.Streaming,
+		p.makeLiveChunkPublisher(logEntry, resp.Header),
+	)
 	logMu.Lock()
 	logEntry.ResponseBodySize = copied
 	if copyErr != nil {
 		// The response may already be partially written; we can only record the error.
 		logEntry.Error = fmt.Sprintf("forward response failed: %v", copyErr)
 	}
-	p.finalizeAndSaveLog(logEntry, startTime, reqCapture, respCapture, loggingCfg)
+	p.finalizeAndSaveLog(logEntry, startTime, reqCapture, respCapture)
+	p.completeLive(logEntry)
 	logMu.Unlock()
 }
 
@@ -203,74 +216,153 @@ func (p *Proxy) resolveRoute(r *http.Request, serverCfg config.ServerConfig) (st
 	return config.ExtractSubdomain(r.Host, serverCfg.ProxyDomains), r.URL
 }
 
-func (p *Proxy) finalizeAndSaveLog(log *storage.RequestLog, startTime time.Time, reqCap, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
-	p.applyRequestCapture(log, reqCap, loggingCfg)
-	p.applyResponseCapture(log, respCap, loggingCfg)
+func (p *Proxy) finalizeAndSaveLog(log *storage.RequestLog, startTime time.Time, reqCap, respCap *limitedCapture) {
+	p.applyRequestCapture(log, reqCap)
+	p.applyResponseCapture(log, respCap)
 	log.Latency = time.Since(startTime).Milliseconds()
 
 	p.saveLogSnapshot(log)
 }
 
-func (p *Proxy) applyRequestCapture(log *storage.RequestLog, reqCap *limitedCapture, loggingCfg config.LoggingConfig) {
+func (p *Proxy) applyRequestCapture(log *storage.RequestLog, reqCap *limitedCapture) {
 	if log == nil || reqCap == nil {
 		return
 	}
-	reqSize, reqTruncated := reqCap.SnapshotMeta()
+	raw, reqSize, reqTruncated := reqCap.Snapshot()
+	log.RequestBodyRaw = raw
 	log.RequestBodySize = reqSize
-	contentType := firstHeaderValue(log.RequestHeaders, "Content-Type")
-	contentEncoding := firstHeaderValue(log.RequestHeaders, "Content-Encoding")
-	var formattedTruncated bool
-	log.RequestBody, formattedTruncated = formatCapturedBody(
-		reqCap,
-		contentType,
-		contentEncoding,
-		loggingCfg.MaxRequestBody,
-		!loggingCfg.StoreBase64,
-	)
-	log.Truncated = log.Truncated || formattedTruncated || reqTruncated
+	log.RequestBodyCaptureTruncated = reqTruncated
 }
 
-func (p *Proxy) applyResponseCapture(log *storage.RequestLog, respCap *limitedCapture, loggingCfg config.LoggingConfig) {
+func (p *Proxy) applyResponseCapture(log *storage.RequestLog, respCap *limitedCapture) {
 	if log == nil || respCap == nil {
 		return
 	}
-	respSize, respTruncated := respCap.SnapshotMeta()
+	raw, respSize, respTruncated := respCap.Snapshot()
+	log.ResponseBodyRaw = raw
 	log.ResponseBodySize = respSize
-	contentType := firstHeaderValue(log.ResponseHeaders, "Content-Type")
-	contentEncoding := firstHeaderValue(log.ResponseHeaders, "Content-Encoding")
-	var formattedTruncated bool
-	log.ResponseBody, formattedTruncated = formatCapturedBody(
-		respCap,
-		contentType,
-		contentEncoding,
-		loggingCfg.MaxResponseBody,
-		!loggingCfg.StoreBase64,
-	)
-	log.Truncated = log.Truncated || formattedTruncated || respTruncated
-}
-
-func firstHeaderValue(headers map[string][]string, key string) string {
-	if headers == nil {
-		return ""
-	}
-	if vv, ok := headers[key]; ok && len(vv) > 0 {
-		return vv[0]
-	}
-	// Best-effort: tolerate different casing.
-	for k, vv := range headers {
-		if strings.EqualFold(k, key) && len(vv) > 0 {
-			return vv[0]
-		}
-	}
-	return ""
+	log.ResponseBodyCaptureTruncated = respTruncated
 }
 
 func (p *Proxy) saveLogSnapshot(entry *storage.RequestLog) {
-	storage.DetachLargeBodies(entry, p.blobs, p.cfg)
 	if err := p.repo.SaveLog(entry); err != nil {
 		// Best-effort: avoid crashing the request path.
 		log.Printf("save log failed/dropped: %v", err)
 	}
+}
+
+func (p *Proxy) publishInitialLive(logEntry *storage.RequestLog) {
+	if p.live == nil || logEntry == nil {
+		return
+	}
+	p.live.Register(logEntry)
+}
+
+func (p *Proxy) publishRequestReady(logEntry *storage.RequestLog) {
+	if p.live == nil || logEntry == nil {
+		return
+	}
+
+	contentType := firstHeaderValue(logEntry.RequestHeaders, "Content-Type")
+	contentEncoding := firstHeaderValue(logEntry.RequestHeaders, "Content-Encoding")
+	body, truncated := p.formatLiveBody(contentType, contentEncoding, logEntry.RequestBodyRaw, p.cfg.LoggingSnapshot().MaxRequestBody)
+
+	p.live.UpdateSnapshot(logEntry.ID, func(snapshot *storage.RequestLog) {
+		snapshot.RequestBody = body
+		snapshot.RequestBodySize = logEntry.RequestBodySize
+		snapshot.Truncated = snapshot.Truncated || logEntry.RequestBodyCaptureTruncated || truncated
+	})
+}
+
+func (p *Proxy) publishHeaders(logEntry *storage.RequestLog) {
+	if p.live == nil || logEntry == nil {
+		return
+	}
+
+	p.live.UpdateSnapshot(logEntry.ID, func(snapshot *storage.RequestLog) {
+		snapshot.StatusCode = logEntry.StatusCode
+		snapshot.ResponseHeaders = cloneHeaders(logEntry.ResponseHeaders)
+		snapshot.Streaming = logEntry.Streaming
+	})
+}
+
+func (p *Proxy) makeLiveChunkPublisher(logEntry *storage.RequestLog, headers http.Header) func([]byte) {
+	if p.live == nil || logEntry == nil {
+		return nil
+	}
+
+	if !isLiveTextResponse(headers.Get("Content-Type")) {
+		return nil
+	}
+
+	contentEncoding := strings.TrimSpace(headers.Get("Content-Encoding"))
+	if contentEncoding != "" && !strings.EqualFold(contentEncoding, "identity") {
+		return nil
+	}
+
+	return func(chunk []byte) {
+		p.publishResponseChunk(logEntry.ID, headers.Get("Content-Type"), chunk)
+	}
+}
+
+func (p *Proxy) publishResponseChunk(id string, contentType string, chunk []byte) {
+	if p.live == nil || id == "" || len(chunk) == 0 {
+		return
+	}
+
+	formatted := httpbody.FormatForDisplay(contentType, "", chunk, httpbody.FormatOptions{
+		MaxOutputBytes:  int64(len(chunk)),
+		TrimLargeBase64: !p.cfg.LoggingSnapshot().StoreBase64,
+	})
+	if formatted.Text == "" || strings.HasPrefix(formatted.Text, "[binary content omitted;") {
+		return
+	}
+
+	p.live.AppendResponseChunk(id, formatted.Text, int64(len(chunk)))
+}
+
+func (p *Proxy) completeLive(logEntry *storage.RequestLog) {
+	if p.live == nil || logEntry == nil {
+		return
+	}
+
+	finalLog := cloneLog(logEntry)
+	loggingCfg := p.cfg.LoggingSnapshot()
+
+	requestBody, requestTruncated := p.formatLiveBody(
+		firstHeaderValue(finalLog.RequestHeaders, "Content-Type"),
+		firstHeaderValue(finalLog.RequestHeaders, "Content-Encoding"),
+		finalLog.RequestBodyRaw,
+		loggingCfg.MaxRequestBody,
+	)
+	responseBody, responseTruncated := p.formatLiveBody(
+		firstHeaderValue(finalLog.ResponseHeaders, "Content-Type"),
+		firstHeaderValue(finalLog.ResponseHeaders, "Content-Encoding"),
+		finalLog.ResponseBodyRaw,
+		loggingCfg.MaxResponseBody,
+	)
+
+	finalLog.RequestBody = requestBody
+	finalLog.ResponseBody = responseBody
+	finalLog.Truncated = finalLog.Truncated ||
+		finalLog.RequestBodyCaptureTruncated ||
+		finalLog.ResponseBodyCaptureTruncated ||
+		requestTruncated ||
+		responseTruncated
+
+	p.live.Complete(finalLog)
+}
+
+func (p *Proxy) formatLiveBody(contentType string, contentEncoding string, body []byte, maxOutputBytes int64) (string, bool) {
+	if len(body) == 0 {
+		return "", false
+	}
+
+	formatted := httpbody.FormatForDisplay(contentType, contentEncoding, body, httpbody.FormatOptions{
+		MaxOutputBytes:  maxOutputBytes,
+		TrimLargeBase64: !p.cfg.LoggingSnapshot().StoreBase64,
+	})
+	return formatted.Text, formatted.Truncated
 }
 
 // copyHeaders copies HTTP headers excluding hop-by-hop headers.
@@ -515,55 +607,105 @@ func (c *limitedCapture) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (c *limitedCapture) View(fn func([]byte)) {
+func (c *limitedCapture) Snapshot() ([]byte, int64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fn(c.buf)
+	if len(c.buf) == 0 {
+		return nil, c.total, c.truncated
+	}
+	buf := make([]byte, len(c.buf))
+	copy(buf, c.buf)
+	return buf, c.total, c.truncated
 }
 
-func (c *limitedCapture) SnapshotMeta() (int64, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.total, c.truncated
-}
-
-func formatCapturedBody(
-	capture *limitedCapture,
-	contentType string,
-	contentEncoding string,
-	maxOutputBytes int64,
-	trimLargeBase64 bool,
-) (string, bool) {
-	if capture == nil {
-		return "", false
+func cloneLog(in *storage.RequestLog) *storage.RequestLog {
+	if in == nil {
+		return nil
 	}
 
-	var text string
-	var truncated bool
-	capture.View(func(buf []byte) {
-		formatted := httpbody.FormatForDisplay(contentType, contentEncoding, buf, httpbody.FormatOptions{
-			MaxOutputBytes:  maxOutputBytes,
-			TrimLargeBase64: trimLargeBase64,
-		})
-		text = formatted.Text
-		truncated = formatted.Truncated
-	})
-	return text, truncated
+	out := *in
+	out.RequestHeaders = cloneHeaders(in.RequestHeaders)
+	out.ResponseHeaders = cloneHeaders(in.ResponseHeaders)
+	if len(in.RequestBodyRaw) > 0 {
+		out.RequestBodyRaw = append([]byte(nil), in.RequestBodyRaw...)
+	}
+	if len(in.ResponseBodyRaw) > 0 {
+		out.ResponseBodyRaw = append([]byte(nil), in.ResponseBodyRaw...)
+	}
+	return &out
 }
 
-func copyWithOptionalFlush(dst http.ResponseWriter, src io.Reader, capture io.Writer, flush bool) (int64, error) {
+func cloneHeaders(in map[string][]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make(map[string][]string, len(in))
+	for k, vv := range in {
+		if vv == nil {
+			out[k] = nil
+			continue
+		}
+		next := make([]string, len(vv))
+		copy(next, vv)
+		out[k] = next
+	}
+	return out
+}
+
+func firstHeaderValue(headers map[string][]string, key string) string {
+	if headers == nil {
+		return ""
+	}
+	if vv, ok := headers[key]; ok && len(vv) > 0 {
+		return vv[0]
+	}
+	for k, vv := range headers {
+		if strings.EqualFold(k, key) && len(vv) > 0 {
+			return vv[0]
+		}
+	}
+	return ""
+}
+
+func isLiveTextResponse(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	}
+	mediaType = strings.ToLower(mediaType)
+
+	if strings.HasPrefix(mediaType, "text/") {
+		return true
+	}
+	if mediaType == "application/json" ||
+		mediaType == "application/xml" ||
+		mediaType == "application/x-www-form-urlencoded" ||
+		mediaType == "application/x-ndjson" ||
+		mediaType == "application/stream+json" ||
+		mediaType == "application/json-seq" {
+		return true
+	}
+	return strings.HasSuffix(mediaType, "+json") || strings.HasSuffix(mediaType, "+xml")
+}
+
+func copyWithOptionalFlush(dst http.ResponseWriter, src io.Reader, capture io.Writer, flush bool, onChunk func([]byte)) (int64, error) {
 	var w io.Writer = dst
 	if capture != nil {
 		w = io.MultiWriter(dst, capture)
 	}
 
 	buf := make([]byte, 32*1024)
-	if !flush {
+	if !flush && onChunk == nil {
 		return io.CopyBuffer(w, src, buf)
 	}
 
 	flusher, ok := dst.(http.Flusher)
-	if !ok {
+	if !ok && onChunk == nil {
 		return io.CopyBuffer(w, src, buf)
 	}
 
@@ -573,10 +715,15 @@ func copyWithOptionalFlush(dst http.ResponseWriter, src io.Reader, capture io.Wr
 		if n > 0 {
 			wn, werr := w.Write(buf[:n])
 			total += int64(wn)
+			if onChunk != nil && wn > 0 {
+				onChunk(buf[:wn])
+			}
 			if werr != nil {
 				return total, werr
 			}
-			flusher.Flush()
+			if ok {
+				flusher.Flush()
+			}
 		}
 		if err != nil {
 			if err == io.EOF {

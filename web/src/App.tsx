@@ -23,7 +23,7 @@ const SettingsPage = lazy(async () => {
 function AppLayout() {
   const { t, i18n } = useTranslation()
   const location = useLocation()
-  const [version, setVersion] = useState<string>('v1.3.1') // 初始显式 v1.3.1，直到接口返回
+  const [version, setVersion] = useState<string>('v1.4.0') // 初始显式 v1.4.0，直到接口返回
 
   useEffect(() => {
     fetchConfig()

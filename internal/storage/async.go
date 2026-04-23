@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/paopaoandlingyia/PrismCat/internal/config"
 )
 
 var (
@@ -22,6 +24,7 @@ var (
 // and preserving order (insert then update) matters.
 type AsyncRepository struct {
 	inner Repository
+	cfg   *config.Config
 
 	ch        chan *RequestLog
 	closeOnce sync.Once
@@ -36,12 +39,13 @@ type AsyncRepository struct {
 }
 
 // NewAsyncRepository creates an async wrapper with a bounded queue.
-func NewAsyncRepository(inner Repository, buffer int) *AsyncRepository {
+func NewAsyncRepository(inner Repository, cfg *config.Config, buffer int) *AsyncRepository {
 	if buffer <= 0 {
 		buffer = 1024
 	}
 	a := &AsyncRepository{
 		inner: inner,
+		cfg:   cfg,
 		ch:    make(chan *RequestLog, buffer),
 	}
 	a.inflightCond = sync.NewCond(&a.inflightMu)
@@ -50,6 +54,7 @@ func NewAsyncRepository(inner Repository, buffer int) *AsyncRepository {
 	go func() {
 		defer a.wg.Done()
 		for entry := range a.ch {
+			PrepareLogForPersistence(entry, a.cfg)
 			if err := a.inner.SaveLog(entry); err != nil {
 				// Best-effort: avoid crashing the proxy path.
 				log.Printf("save log failed: %v", err)
@@ -149,6 +154,8 @@ func cloneRequestLog(in *RequestLog) *RequestLog {
 	out := *in
 	out.RequestHeaders = cloneHeaders(in.RequestHeaders)
 	out.ResponseHeaders = cloneHeaders(in.ResponseHeaders)
+	out.RequestBodyRaw = cloneBytes(in.RequestBodyRaw)
+	out.ResponseBodyRaw = cloneBytes(in.ResponseBodyRaw)
 	return &out
 }
 
@@ -166,5 +173,14 @@ func cloneHeaders(in map[string][]string) map[string][]string {
 		copy(newVv, vv)
 		out[k] = newVv
 	}
+	return out
+}
+
+func cloneBytes(in []byte) []byte {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]byte, len(in))
+	copy(out, in)
 	return out
 }

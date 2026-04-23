@@ -16,6 +16,7 @@ import (
 
 	"github.com/paopaoandlingyia/PrismCat/internal/config"
 	"github.com/paopaoandlingyia/PrismCat/internal/httpbody"
+	"github.com/paopaoandlingyia/PrismCat/internal/live"
 	"github.com/paopaoandlingyia/PrismCat/internal/storage"
 )
 
@@ -24,11 +25,12 @@ type Handler struct {
 	cfg    *config.Config
 	repo   storage.Repository
 	blobs  storage.BlobStore
+	live   *live.Registry
 	client *http.Client
 }
 
 // New 创建 API 处理器
-func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *Handler {
+func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore, liveRegistry *live.Registry) *Handler {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -45,6 +47,7 @@ func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *
 		cfg:   cfg,
 		repo:  repo,
 		blobs: blobs,
+		live:  liveRegistry,
 		client: &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -157,11 +160,22 @@ func (h *Handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 // handleLogDetail 获取日志详情
 func (h *Handler) handleLogDetail(w http.ResponseWriter, r *http.Request) {
 	// 从路径中提取 ID: /api/logs/{id}
-	id := r.URL.Path[len("/api/logs/"):]
-	if id == "" {
+	path := strings.TrimPrefix(r.URL.Path, "/api/logs/")
+	if path == "" {
 		h.jsonError(w, "缺少日志 ID", http.StatusBadRequest)
 		return
 	}
+
+	if id, ok := strings.CutSuffix(path, "/live"); ok {
+		if id == "" {
+			h.jsonError(w, "缺少日志 ID", http.StatusBadRequest)
+			return
+		}
+		h.handleLogLive(w, r, id)
+		return
+	}
+
+	id := path
 
 	if r.Method == http.MethodDelete {
 		if err := h.repo.DeleteLog(id); err != nil {
@@ -190,6 +204,87 @@ func (h *Handler) handleLogDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.jsonResponse(w, entry)
+}
+
+// handleLogLive streams live updates for a single log entry.
+func (h *Handler) handleLogLive(w http.ResponseWriter, r *http.Request, id string) {
+	if h.live == nil {
+		http.Error(w, "live stream unavailable", http.StatusNotImplemented)
+		return
+	}
+
+	events, unsubscribe, ok := h.live.Subscribe(id)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	defer unsubscribe()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	keepAlive := time.NewTicker(15 * time.Second)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-keepAlive.C:
+			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+
+			if err := h.writeLiveEvent(w, event); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+func (h *Handler) writeLiveEvent(w io.Writer, event live.Event) error {
+	payload := map[string]interface{}{
+		"type": event.Type,
+	}
+	if event.Log != nil {
+		payload["log"] = event.Log
+	}
+	if event.Chunk != "" {
+		payload["chunk"] = event.Chunk
+	}
+	if event.SizeDelta > 0 {
+		payload["size_delta"] = event.SizeDelta
+	}
+
+	return writeSSEEvent(w, string(event.Type), payload)
+}
+
+func writeSSEEvent(w io.Writer, event string, payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return err
+	}
+	return nil
 }
 
 // handleStats 获取统计信息
@@ -317,9 +412,9 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		h.jsonResponse(w, map[string]interface{}{
 			"version": config.Version,
 			"server": map[string]interface{}{
-			"proxy_domains": serverCfg.ProxyDomains,
-			"enable_path_routing": serverCfg.EnablePathRouting,
-			"path_routing_prefix": serverCfg.PathRoutingPrefix,
+				"proxy_domains":       serverCfg.ProxyDomains,
+				"enable_path_routing": serverCfg.EnablePathRouting,
+				"path_routing_prefix": serverCfg.PathRoutingPrefix,
 			},
 			"logging": map[string]interface{}{
 				"max_request_body":            logging.MaxRequestBody,

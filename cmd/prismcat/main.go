@@ -130,7 +130,7 @@ func main() {
 	}
 
 	detachingRepo := storage.NewDetachingRepository(sqliteRepo, blobStore, cfg)
-	asyncRepo := storage.NewAsyncRepository(detachingRepo, cfg.Storage.AsyncBuffer)
+	asyncRepo := storage.NewAsyncRepository(detachingRepo, cfg, cfg.Storage.AsyncBuffer)
 	defer asyncRepo.Close()
 
 	// Best-effort log retention cleanup.

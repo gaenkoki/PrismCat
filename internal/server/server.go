@@ -19,6 +19,7 @@ import (
 
 	"github.com/paopaoandlingyia/PrismCat/internal/api"
 	"github.com/paopaoandlingyia/PrismCat/internal/config"
+	"github.com/paopaoandlingyia/PrismCat/internal/live"
 	"github.com/paopaoandlingyia/PrismCat/internal/proxy"
 	"github.com/paopaoandlingyia/PrismCat/internal/storage"
 )
@@ -171,6 +172,7 @@ type Server struct {
 	cfg    *config.Config
 	repo   storage.Repository
 	blobs  storage.BlobStore
+	live   *live.Registry
 	proxy  *proxy.Proxy
 	api    *api.Handler
 	server *http.Server
@@ -178,12 +180,14 @@ type Server struct {
 
 // New 创建服务器实例
 func New(cfg *config.Config, repo storage.Repository, blobs storage.BlobStore) *Server {
+	liveRegistry := live.NewRegistry(cfg.LoggingSnapshot().MaxResponseBody)
 	return &Server{
 		cfg:   cfg,
 		repo:  repo,
 		blobs: blobs,
-		proxy: proxy.New(cfg, repo, blobs),
-		api:   api.New(cfg, repo, blobs),
+		live:  liveRegistry,
+		proxy: proxy.New(cfg, repo, liveRegistry),
+		api:   api.New(cfg, repo, blobs, liveRegistry),
 	}
 }
 

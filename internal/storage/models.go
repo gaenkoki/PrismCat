@@ -33,6 +33,12 @@ type RequestLog struct {
 	Error     string `json:"error,omitempty"` // 错误信息
 	Truncated bool   `json:"truncated"`       // 响应体是否被截断
 	Tag       string `json:"tag,omitempty"`   // 来自 X-PrismCat-Tag 请求头
+
+	// Transient capture state used only before async persistence.
+	RequestBodyRaw               []byte `json:"-"`
+	RequestBodyCaptureTruncated  bool   `json:"-"`
+	ResponseBodyRaw              []byte `json:"-"`
+	ResponseBodyCaptureTruncated bool   `json:"-"`
 }
 
 // LogFilter 日志查询过滤器
@@ -71,7 +77,7 @@ type Repository interface {
 	ListLogs(filter LogFilter) ([]*RequestLog, int64, error) // 返回日志列表和总数
 	DeleteLog(id string) error
 	DeleteLogs(ids []string) (int64, error)
-	DeleteLogsBefore(before time.Time) (int64, error)        // 返回删除数量
+	DeleteLogsBefore(before time.Time) (int64, error) // 返回删除数量
 
 	// 统计
 	GetStats(since *time.Time) (*LogStats, error)

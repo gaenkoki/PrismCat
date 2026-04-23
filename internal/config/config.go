@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const Version = "1.3.1"
+const Version = "1.4.0"
 
 // Config 应用配置
 type Config struct {
@@ -75,8 +75,8 @@ type LoggingConfig struct {
 	// snapshot right after the request body has been fully sent to the upstream
 	// (i.e. before the upstream responds).
 	//
-	// This makes request bodies visible earlier for non-streaming/slow upstreams,
-	// but adds an extra DB write per request.
+	// This is mainly useful when you want the request body persisted before the
+	// upstream responds, but it adds an extra DB write per request.
 	EarlyRequestBodySnapshot bool `yaml:"early_request_body_snapshot"`
 
 	// DetachBodyOverBytes detaches large captured bodies into the blob store.
@@ -140,7 +140,7 @@ func Load(path string) (*Config, error) {
 			MaxResponseBody:          10 << 20, // 10MB
 			SensitiveHeaders:         []string{"Authorization", "x-api-key", "api-key"},
 			StoreBase64:              true,
-			EarlyRequestBodySnapshot: true,
+			EarlyRequestBodySnapshot: false,
 			DetachBodyOverBytes:      256 * 1024,
 			BodyPreviewBytes:         4 * 1024,
 		},
@@ -380,7 +380,6 @@ func (c *Config) StorageSnapshot() StorageConfig {
 	return c.Storage
 }
 
-
 // KeepAliveSnapshot returns a copy of the current keep-alive config.
 func (c *Config) KeepAliveSnapshot() KeepAliveConfig {
 	c.mu.RLock()
@@ -555,4 +554,3 @@ func ExtractSubdomain(host string, proxyDomains []string) string {
 
 	return ""
 }
-
