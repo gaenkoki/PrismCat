@@ -563,9 +563,37 @@ func (h *Handler) handleBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bodies are captured as text; serve as UTF-8 for easy viewing/copying in the UI.
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	disposition := "inline"
+	if r.URL.Query().Get("download") == "1" {
+		disposition = "attachment"
+	}
+	w.Header().Set("Content-Type", http.DetectContentType(data))
+	w.Header().Set("Content-Disposition", disposition+"; filename=\""+blobFilename(ref, data)+"\"")
 	_, _ = w.Write(data)
+}
+
+func blobFilename(ref string, data []byte) string {
+	suffix := "bin"
+	switch http.DetectContentType(data) {
+	case "image/png":
+		suffix = "png"
+	case "image/jpeg":
+		suffix = "jpg"
+	case "image/gif":
+		suffix = "gif"
+	case "image/webp":
+		suffix = "webp"
+	case "application/pdf":
+		suffix = "pdf"
+	}
+	name := strings.TrimPrefix(ref, "sha256:")
+	if len(name) > 12 {
+		name = name[:12]
+	}
+	if name == "" {
+		name = "blob"
+	}
+	return name + "." + suffix
 }
 
 // handleReplay sends a request to the configured upstream and returns the response.

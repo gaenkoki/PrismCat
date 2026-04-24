@@ -162,6 +162,10 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
 
     const effectiveRequestBody = fullRequestBody ?? displayLog?.request_body ?? ''
     const effectiveResponseBody = fullResponseBody ?? displayLog?.response_body ?? ''
+    const requestContentType = firstHeaderValue(displayLog?.request_headers, 'Content-Type')
+    const responseContentType = firstHeaderValue(displayLog?.response_headers, 'Content-Type')
+    const requestBodyIsBinary = isBinaryPlaceholder(effectiveRequestBody)
+    const responseBodyIsBinary = isBinaryPlaceholder(effectiveResponseBody)
     const shouldInspectRequestBody = expandedSections.requestBody && requestViewMode === 'pretty' && Boolean(effectiveRequestBody)
     const shouldInspectResponseBody = expandedSections.responseBody && Boolean(effectiveResponseBody)
 
@@ -562,6 +566,9 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                     {displayLog.request_body_ref && (
                                         <BlobPanel
                                             blobRef={displayLog.request_body_ref}
+                                            bodySize={displayLog.request_body_size}
+                                            contentType={requestContentType}
+                                            binary={requestBodyIsBinary}
                                             isLoaded={!!fullRequestBody}
                                             loading={blobLoading.request}
                                             error={blobError}
@@ -570,7 +577,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                         />
                                     )}
 
-                                    {effectiveRequestBody ? (
+                                    {effectiveRequestBody && !(requestBodyIsBinary && displayLog.request_body_ref) ? (
                                         <div className={cn(codeCardClassName, "flex max-h-[500px] flex-col")}>
                                             <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
                                                 <ViewToggle
@@ -671,6 +678,9 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                     {displayLog.response_body_ref && (
                                         <BlobPanel
                                             blobRef={displayLog.response_body_ref}
+                                            bodySize={displayLog.response_body_size}
+                                            contentType={responseContentType}
+                                            binary={responseBodyIsBinary}
                                             isLoaded={!!fullResponseBody}
                                             loading={blobLoading.response}
                                             error={blobError}
@@ -679,7 +689,7 @@ export function LogDetail({ log, loading, onClose }: LogDetailProps) {
                                         />
                                     )}
 
-                                    {effectiveResponseBody ? (
+                                    {effectiveResponseBody && !(responseBodyIsBinary && displayLog.response_body_ref) ? (
                                         <div className={cn(codeCardClassName, "flex max-h-[500px] flex-col")}>
                                             <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
                                                 <ViewToggle
@@ -754,4 +764,22 @@ function parseLiveEvent(event: MessageEvent<string>): LiveLogEvent | null {
     } catch {
         return null
     }
+}
+
+function isBinaryPlaceholder(body: string) {
+    return body.trimStart().startsWith('[binary content omitted;')
+}
+
+function firstHeaderValue(headers: Record<string, string[]> | undefined, name: string) {
+    if (!headers) return ''
+    const direct = headers[name]
+    if (direct?.length) return direct[0]
+
+    const lowerName = name.toLowerCase()
+    for (const [key, values] of Object.entries(headers)) {
+        if (key.toLowerCase() === lowerName && values.length) {
+            return values[0]
+        }
+    }
+    return ''
 }

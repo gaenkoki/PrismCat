@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"context"
+	"log"
 	"strings"
 
 	"github.com/paopaoandlingyia/PrismCat/internal/config"
@@ -9,33 +11,44 @@ import (
 
 // PrepareLogForPersistence converts raw captured bodies into their persisted
 // display form before the async worker writes them to storage.
-func PrepareLogForPersistence(logEntry *RequestLog, cfg *config.Config) {
+func PrepareLogForPersistence(logEntry *RequestLog, cfg *config.Config, blobs ...BlobStore) {
 	if logEntry == nil || cfg == nil {
 		return
 	}
 
 	loggingCfg := cfg.LoggingSnapshot()
+	blobStore := firstBlobStore(blobs)
 
 	var requestFormattedTruncated bool
 	if len(logEntry.RequestBodyRaw) > 0 {
-		logEntry.RequestBody, requestFormattedTruncated = formatCapturedBody(
+		formatted := formatCapturedBody(
 			logEntry.RequestBodyRaw,
 			firstHeaderValue(logEntry.RequestHeaders, "Content-Type"),
 			firstHeaderValue(logEntry.RequestHeaders, "Content-Encoding"),
 			loggingCfg.MaxRequestBody,
 			!loggingCfg.StoreBase64,
 		)
+		logEntry.RequestBody = formatted.Text
+		requestFormattedTruncated = formatted.Truncated
+		if formatted.Binary && logEntry.RequestBodyRef == "" {
+			logEntry.RequestBodyRef = putBodyBlob(blobStore, "request", logEntry.RequestBodyRaw)
+		}
 	}
 
 	var responseFormattedTruncated bool
 	if len(logEntry.ResponseBodyRaw) > 0 {
-		logEntry.ResponseBody, responseFormattedTruncated = formatCapturedBody(
+		formatted := formatCapturedBody(
 			logEntry.ResponseBodyRaw,
 			firstHeaderValue(logEntry.ResponseHeaders, "Content-Type"),
 			firstHeaderValue(logEntry.ResponseHeaders, "Content-Encoding"),
 			loggingCfg.MaxResponseBody,
 			!loggingCfg.StoreBase64,
 		)
+		logEntry.ResponseBody = formatted.Text
+		responseFormattedTruncated = formatted.Truncated
+		if formatted.Binary && logEntry.ResponseBodyRef == "" {
+			logEntry.ResponseBodyRef = putBodyBlob(blobStore, "response", logEntry.ResponseBodyRaw)
+		}
 	}
 
 	logEntry.Truncated = logEntry.Truncated ||
@@ -50,17 +63,34 @@ func PrepareLogForPersistence(logEntry *RequestLog, cfg *config.Config) {
 	logEntry.ResponseBodyCaptureTruncated = false
 }
 
-func formatCapturedBody(body []byte, contentType string, contentEncoding string, maxOutputBytes int64, trimLargeBase64 bool) (string, bool) {
+func formatCapturedBody(body []byte, contentType string, contentEncoding string, maxOutputBytes int64, trimLargeBase64 bool) httpbody.FormatResult {
 	if len(body) == 0 {
-		return "", false
+		return httpbody.FormatResult{}
 	}
 
-	formatted := httpbody.FormatForDisplay(contentType, contentEncoding, body, httpbody.FormatOptions{
+	return httpbody.FormatForDisplay(contentType, contentEncoding, body, httpbody.FormatOptions{
 		MaxOutputBytes:  maxOutputBytes,
 		TrimLargeBase64: trimLargeBase64,
 	})
+}
 
-	return formatted.Text, formatted.Truncated
+func firstBlobStore(blobs []BlobStore) BlobStore {
+	if len(blobs) == 0 {
+		return nil
+	}
+	return blobs[0]
+}
+
+func putBodyBlob(blobs BlobStore, kind string, body []byte) string {
+	if blobs == nil || len(body) == 0 {
+		return ""
+	}
+	ref, err := blobs.Put(context.Background(), body)
+	if err != nil {
+		log.Printf("blob put (%s binary) failed: %v", kind, err)
+		return ""
+	}
+	return ref
 }
 
 func firstHeaderValue(headers map[string][]string, key string) string {

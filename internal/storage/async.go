@@ -25,6 +25,7 @@ var (
 type AsyncRepository struct {
 	inner Repository
 	cfg   *config.Config
+	blobs BlobStore
 
 	ch        chan *RequestLog
 	closeOnce sync.Once
@@ -39,13 +40,14 @@ type AsyncRepository struct {
 }
 
 // NewAsyncRepository creates an async wrapper with a bounded queue.
-func NewAsyncRepository(inner Repository, cfg *config.Config, buffer int) *AsyncRepository {
+func NewAsyncRepository(inner Repository, cfg *config.Config, buffer int, blobs ...BlobStore) *AsyncRepository {
 	if buffer <= 0 {
 		buffer = 1024
 	}
 	a := &AsyncRepository{
 		inner: inner,
 		cfg:   cfg,
+		blobs: firstBlobStore(blobs),
 		ch:    make(chan *RequestLog, buffer),
 	}
 	a.inflightCond = sync.NewCond(&a.inflightMu)
@@ -54,7 +56,7 @@ func NewAsyncRepository(inner Repository, cfg *config.Config, buffer int) *Async
 	go func() {
 		defer a.wg.Done()
 		for entry := range a.ch {
-			PrepareLogForPersistence(entry, a.cfg)
+			PrepareLogForPersistence(entry, a.cfg, a.blobs)
 			if err := a.inner.SaveLog(entry); err != nil {
 				// Best-effort: avoid crashing the proxy path.
 				log.Printf("save log failed: %v", err)

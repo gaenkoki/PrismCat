@@ -4,14 +4,21 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
+	"mime/multipart"
+	"net/http"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 var b64Regex = regexp.MustCompile(`(data:[^\s]+?;base64,)?([A-Za-z0-9+/]{200,}[=]{0,2})`)
@@ -26,6 +33,7 @@ type FormatResult struct {
 	Truncated   bool
 	Decoded     bool
 	DecodedFrom string
+	Binary      bool
 }
 
 func FormatForDisplay(contentType, contentEncoding string, body []byte, opts FormatOptions) FormatResult {
@@ -43,6 +51,15 @@ func FormatForDisplay(contentType, contentEncoding string, body []byte, opts For
 		decompressed = true
 		truncated = truncated || wasTruncated
 		decodedFrom = appliedEncoding
+	}
+
+	if multipartText, ok := formatMultipartForDisplay(contentType, data, opts.TrimLargeBase64); ok {
+		return FormatResult{
+			Text:        multipartText,
+			Truncated:   truncated,
+			Decoded:     decompressed,
+			DecodedFrom: decodedFrom,
+		}
 	}
 
 	if isProbablyText(contentType) && utf8.Valid(data) {
@@ -70,18 +87,100 @@ func FormatForDisplay(contentType, contentEncoding string, body []byte, opts For
 				Truncated:   true,
 				Decoded:     true,
 				DecodedFrom: decodedFrom,
+				Binary:      true,
 			}
 		}
 		return FormatResult{
 			Text:        fmt.Sprintf("[binary content omitted; %d bytes after decompression]", len(data)),
 			Decoded:     true,
 			DecodedFrom: decodedFrom,
+			Binary:      true,
 		}
 	}
 
 	return FormatResult{
-		Text: fmt.Sprintf("[binary content omitted; %d bytes captured]", len(body)),
+		Text:   fmt.Sprintf("[binary content omitted; %d bytes captured]", len(body)),
+		Binary: true,
 	}
+}
+
+func formatMultipartForDisplay(contentType string, body []byte, trimLargeBase64 bool) (string, bool) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
+		return "", false
+	}
+
+	boundary := params["boundary"]
+	if boundary == "" {
+		return "", false
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	parts := make([]map[string]any, 0)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", false
+		}
+
+		partBody, err := io.ReadAll(part)
+		_ = part.Close()
+		if err != nil {
+			return "", false
+		}
+
+		partInfo := map[string]any{
+			"name": part.FormName(),
+			"size": len(partBody),
+		}
+		if filename := part.FileName(); filename != "" {
+			contentType := part.Header.Get("Content-Type")
+			if contentType == "" {
+				contentType = http.DetectContentType(partBody)
+			}
+			sum := sha256.Sum256(partBody)
+			partInfo["type"] = "file"
+			partInfo["filename"] = filename
+			partInfo["content_type"] = contentType
+			partInfo["sha256"] = hex.EncodeToString(sum[:])
+			if isImageContentType(contentType) && !trimLargeBase64 {
+				partInfo["data_url"] = "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(partBody)
+			}
+		} else {
+			partInfo["type"] = "field"
+			if utf8.Valid(partBody) {
+				partInfo["value"] = sanitizeText(string(partBody), trimLargeBase64)
+			} else {
+				sum := sha256.Sum256(partBody)
+				partInfo["type"] = "binary_field"
+				partInfo["content_type"] = http.DetectContentType(partBody)
+				partInfo["sha256"] = hex.EncodeToString(sum[:])
+			}
+		}
+		parts = append(parts, partInfo)
+	}
+
+	payload := map[string]any{
+		"content_type": mediaType,
+		"parts":        parts,
+	}
+	out, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
+}
+
+func isImageContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	mediaType = strings.ToLower(mediaType)
+	return strings.HasPrefix(mediaType, "image/")
 }
 
 func decodeContent(contentEncoding string, body []byte, maxOutputBytes int64) ([]byte, bool, string, bool) {
@@ -130,6 +229,18 @@ func decodeOnce(encoding string, body []byte, maxOutputBytes int64) ([]byte, boo
 		return data, truncated, true
 	case "br":
 		data, truncated, err := readAllLimited(brotli.NewReader(bytes.NewReader(body)), maxOutputBytes)
+		if err != nil {
+			return nil, false, false
+		}
+		return data, truncated, true
+	case "zstd":
+		r, err := zstd.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, false, false
+		}
+		defer r.Close()
+
+		data, truncated, err := readAllLimited(r, maxOutputBytes)
 		if err != nil {
 			return nil, false, false
 		}
